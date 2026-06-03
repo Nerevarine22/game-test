@@ -3,18 +3,19 @@ export default function GameStartPage() {
     <div className="game-container">
       <div className="content-wrapper">
         <h1 className="game-title">Game</h1>
-        
+
         <p className="game-subtitle">
-          Experience the next level of mobile gaming. Tap to begin your journey.
+          First-person archery challenge. Fight the wind. Hit the bullseye.
         </p>
 
-        <button className="play-button">
+        <a href="/game" className="play-button">
           Start Playing
-        </button>
+        </a>
 
         <div className="features">
-          <div className="feature-pill">Epic Quests</div>
-          <div className="feature-pill">Multiplayer</div>
+          <div className="feature-pill">🏹 3 Arrows</div>
+          <div className="feature-pill">💨 Wind Drift</div>
+          <div className="feature-pill">🎯 Bullseye</div>
         </div>
       </div>
     </div>
