@@ -502,7 +502,7 @@ export default function FirstPersonArchery({ onGameFinished }) {
         height: GAME_H,
         backgroundColor: '#0d0d22',
         scale: {
-          mode:       Phaser.Scale.FIT,
+          mode:       Phaser.Scale.ENVELOP,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           parent:     containerRef.current,
           width:      GAME_W,
