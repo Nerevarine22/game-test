@@ -300,8 +300,11 @@ function createArcheryScene(onGameFinished) {
 
       this.time.addEvent({
         delay: 16,
-        repeat: Math.ceil(FLIGHT_MS / 16) + 2, // +2 ensures t=1 fires
+        repeat: Math.ceil(FLIGHT_MS / 16) + 2,
         callback: () => {
+          // Guard: once impact fires, ignore remaining repeats
+          if (!this.arrowGfx.visible && this.isFiring === false) return;
+
           const elapsed = this.time.now - startTime;
           const t = Math.min(elapsed / FLIGHT_MS, 1);
 
@@ -315,13 +318,14 @@ function createArcheryScene(onGameFinished) {
 
           this.drawArrow(cx, cy, scale);
 
-          if (t >= 1) {
+          if (t >= 1 && !this._impactFired) {
+            this._impactFired = true;          // fire exactly once
             this.arrowGfx.setVisible(false);
-            // Score using final impact coords (wind + gravity applied)
             this.onArrowImpact(finalX, finalY);
           }
         },
       });
+      this._impactFired = false; // reset flag for this shot
     }
 
     // ── Draw Arrow (scale-based depth illusion) ────────────────────────────
@@ -373,7 +377,7 @@ function createArcheryScene(onGameFinished) {
       }
 
       this.totalScore += score;
-      this.shotsLog.push({ aimX, aimY, impactX, impactY, dist: Math.round(dist), score });
+      this.shotsLog.push({ impactX, impactY, dist: Math.round(dist), score });
 
       // Draw impact marker on target
       this.drawImpactMarker(impactX, impactY);
