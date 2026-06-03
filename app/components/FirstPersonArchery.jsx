@@ -473,7 +473,7 @@ export default function FirstPersonArchery({ onGameFinished }) {
         height: GAME_H,
         backgroundColor: '#0d0d22',
         scale: {
-          mode:       Phaser.Scale.FIT,
+          mode:       Phaser.Scale.HEIGHT_CONTROLS_WIDTH,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           parent:     containerRef.current,
           width:      GAME_W,
@@ -500,15 +500,17 @@ export default function FirstPersonArchery({ onGameFinished }) {
     <div
       ref={containerRef}
       style={{
-        width:    '100%',
-        maxWidth: '500px',
-        margin:   '0 auto',
-        aspectRatio: `${GAME_W} / ${GAME_H}`,
-        background: '#0d0d22',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        boxShadow: '0 0 40px rgba(0, 240, 255, 0.2)',
-        touchAction: 'none',
+        height:       '100%',
+        width:        'auto',
+        aspectRatio:  `${GAME_W} / ${GAME_H}`,
+        maxWidth:     '100%',
+        margin:       '0 auto',
+        background:   '#0d0d22',
+        borderRadius: '12px',
+        overflow:     'hidden',
+        boxShadow:    '0 0 40px rgba(0, 240, 255, 0.2)',
+        touchAction:  'none',
+        flexShrink:   0,
       }}
     />
   );
