@@ -425,9 +425,11 @@ function createArcheryScene(onGameFinished) {
     updateWindText() {
       const dir  = Math.atan2(this.wind.y, this.wind.x);
       const spd  = Math.sqrt(this.wind.x ** 2 + this.wind.y ** 2);
+      // dir=0 → East (→), π/2 → South (↓), π → West (←), -π/2 → North (↑)
+      // Map angle to 8-sector index without +PI so arrow matches actual drift direction
       const dirs = ['→','↘','↓','↙','←','↖','↑','↗'];
-      const arrow = dirs[Math.round(((dir + Math.PI) / (Math.PI * 2)) * 8) % 8];
-      this.windText.setText(`💨 Wind ${arrow}  ${Math.round(spd)} px/s`);
+      const idx  = Math.round((dir / (Math.PI * 2) + 1) * 8) % 8;
+      this.windText.setText(`💨 Wind ${dirs[idx]}  ${Math.round(spd)} px/s`);
     }
 
     updateArrowsText() {
@@ -500,7 +502,7 @@ export default function FirstPersonArchery({ onGameFinished }) {
         height: GAME_H,
         backgroundColor: '#0d0d22',
         scale: {
-          mode:       Phaser.Scale.HEIGHT_CONTROLS_WIDTH,
+          mode:       Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           parent:     containerRef.current,
           width:      GAME_W,
@@ -527,17 +529,11 @@ export default function FirstPersonArchery({ onGameFinished }) {
     <div
       ref={containerRef}
       style={{
-        height:       '100%',
-        width:        'auto',
-        aspectRatio:  `${GAME_W} / ${GAME_H}`,
-        maxWidth:     '100%',
-        margin:       '0 auto',
-        background:   '#0d0d22',
-        borderRadius: '12px',
-        overflow:     'hidden',
-        boxShadow:    '0 0 40px rgba(0, 240, 255, 0.2)',
-        touchAction:  'none',
-        flexShrink:   0,
+        width:       '100%',
+        height:      '100%',
+        overflow:    'hidden',
+        touchAction: 'none',
+        background:  '#0d0d22',
       }}
     />
   );
