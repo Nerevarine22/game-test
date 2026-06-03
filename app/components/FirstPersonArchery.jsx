@@ -125,19 +125,10 @@ function createArcheryScene(onGameFinished) {
     }
 
     // ── Update ─────────────────────────────────────────────────────────────
-    update(time, delta) {
-      if (this.isFiring || this.arrowsLeft <= 0) return;
-
-      const dt = delta / 1000;
-
-      // Wind drifts crosshair always
-      this.crossX += this.wind.x * dt;
-      this.crossY += this.wind.y * dt;
-
-      // Clamp crosshair inside canvas
-      this.crossX = Phaser.Math.Clamp(this.crossX, 20, GAME_W - 20);
-      this.crossY = Phaser.Math.Clamp(this.crossY, 80, GAME_H - 80);
-
+    // Crosshair is 100% pointer-driven — NO wind drift here.
+    // Wind only affects the arrow during flight (see fireArrow).
+    update() {
+      if (this.isFiring) return;
       this.drawCrosshair(this.crossX, this.crossY);
     }
 
@@ -233,9 +224,10 @@ function createArcheryScene(onGameFinished) {
     }
 
     // ── Input handlers ─────────────────────────────────────────────────────
+    // Crosshair tracks pointer delta with perfect 1:1 precision.
     onPointerDown(ptr) {
       if (this.isFiring || this.arrowsLeft <= 0) return;
-      this.isHolding    = true;
+      this.isHolding     = true;
       this.pointerStartX = ptr.x;
       this.pointerStartY = ptr.y;
       this.crossStartX   = this.crossX;
@@ -244,10 +236,13 @@ function createArcheryScene(onGameFinished) {
 
     onPointerMove(ptr) {
       if (!this.isHolding || this.isFiring) return;
-      const dx = ptr.x - this.pointerStartX;
-      const dy = ptr.y - this.pointerStartY;
-      this.crossX = Phaser.Math.Clamp(this.crossStartX + dx, 20, GAME_W - 20);
-      this.crossY = Phaser.Math.Clamp(this.crossStartY + dy, 80, GAME_H - 80);
+      // Pure 1:1 drag — no wind, no smoothing, no offset
+      this.crossX = Phaser.Math.Clamp(
+        this.crossStartX + (ptr.x - this.pointerStartX), 20, GAME_W - 20
+      );
+      this.crossY = Phaser.Math.Clamp(
+        this.crossStartY + (ptr.y - this.pointerStartY), 80, GAME_H - 80
+      );
     }
 
     onPointerUp() {
@@ -257,45 +252,73 @@ function createArcheryScene(onGameFinished) {
     }
 
     // ── Fire Arrow ─────────────────────────────────────────────────────────
+    // Arrow flight uses a quadratic bezier to curve from the bottom of the
+    // screen toward the crosshair aim point, then drift to finalX/Y driven
+    // by windX, windY and gravityDrop. The crosshair is NOT moved at all.
     fireArrow() {
       if (this.arrowsLeft <= 0) return;
       this.arrowsLeft--;
       this.isFiring = true;
       this.updateArrowsText();
 
-      // Snapshot aim position + apply gravity offset
-      const aimX = this.crossX;
-      const aimY = this.crossY;
+      // ── 1. Capture exact crosshair position at release ──────────────────
+      const startX = this.crossX;  // aim point X
+      const startY = this.crossY;  // aim point Y
 
-      // Arrow starts at bottom-center, large scale
-      const startX = GAME_W / 2;
-      const startY = GAME_H + 20;
+      // ── 2. Arrow spawns at bottom-center at large scale ─────────────────
+      const SPAWN_X = GAME_W / 2;
+      const SPAWN_Y = GAME_H + 30;
 
-      // Animate arrow flying toward aim point, shrinking (depth illusion)
-      const DURATION = 900; // ms
-      const startTime = this.time.now;
+      // ── 3. Wind & gravity accumulated over 1-second flight ──────────────
+      const FLIGHT_MS   = 1000;
+      const FLIGHT_S    = FLIGHT_MS / 1000;       // 1.0 s
+      const GRAVITY_DROP = 40;                    // px downward during flight
+      const windX = this.wind.x * FLIGHT_S;       // total X drift
+      const windY = this.wind.y * FLIGHT_S;       // total Y drift
+
+      // Final impact coordinates (formula from spec)
+      const finalX = startX + windX;
+      const finalY = startY + windY + GRAVITY_DROP;
+
+      // ── 4. Bezier control point — pulled in wind direction at mid-height ─
+      // The control point sits at 50% flight distance horizontally drifted
+      // by the wind, giving a natural curve. Vertically it's pulled upward
+      // (bow arc) then drops due to gravity/wind.
+      const ctrlX = Phaser.Math.Linear(SPAWN_X, finalX, 0.5) + windX * 0.5;
+      const ctrlY = Phaser.Math.Linear(SPAWN_Y, finalY, 0.5) - 120 + windY * 0.3;
+
+      // ── 5. Animate every frame ───────────────────────────────────────────
+      const SCALE_START = 3.0;
+      const SCALE_END   = 0.2;
+      const startTime   = this.time.now;
 
       this.arrowGfx.setVisible(true);
 
-      const gravityDrop = 30; // px drop at impact
+      // Quadratic bezier helper: B(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2
+      const bezier = (p0, p1, p2, t) =>
+        (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
 
       this.time.addEvent({
         delay: 16,
-        repeat: Math.ceil(DURATION / 16),
+        repeat: Math.ceil(FLIGHT_MS / 16) + 2, // +2 ensures t=1 fires
         callback: () => {
           const elapsed = this.time.now - startTime;
-          const t = Math.min(elapsed / DURATION, 1);
+          const t = Math.min(elapsed / FLIGHT_MS, 1);
 
-          // Lerp position
-          const cx = Phaser.Math.Linear(startX, aimX, t);
-          const cy = Phaser.Math.Linear(startY, aimY + gravityDrop * (1 - t), t);
-          const scale = Phaser.Math.Linear(2.5, 0.18, t);
+          // Smooth easing on t so the arrow accelerates slightly
+          const te = t * t * (3 - 2 * t); // smoothstep
+
+          // Bezier position: SPAWN → ctrl → final
+          const cx    = bezier(SPAWN_X, ctrlX, finalX, te);
+          const cy    = bezier(SPAWN_Y, ctrlY, finalY, te);
+          const scale = Phaser.Math.Linear(SCALE_START, SCALE_END, te);
 
           this.drawArrow(cx, cy, scale);
 
           if (t >= 1) {
             this.arrowGfx.setVisible(false);
-            this.onArrowImpact(aimX, aimY);
+            // Score using final impact coords (wind + gravity applied)
+            this.onArrowImpact(finalX, finalY);
           }
         },
       });
@@ -324,10 +347,10 @@ function createArcheryScene(onGameFinished) {
     }
 
     // ── Impact & Scoring ───────────────────────────────────────────────────
-    onArrowImpact(aimX, aimY) {
-      // Apply gravity shift to actual impact
-      const impactX = aimX;
-      const impactY = aimY + 30; // gravity already applied in flight
+    // finalX and finalY already include windX, windY, gravityDrop from fireArrow.
+    onArrowImpact(finalX, finalY) {
+      const impactX = finalX;
+      const impactY = finalY;
 
       // Distance from target center
       const dx = impactX - TARGET_X;
