@@ -195,55 +195,63 @@ function generateTextures(scene) {
 
   // ── bow riser ────────────────────────────────────────────────────────────
   {
-    const w = 120, h = GAME_H;
+    const w = 80, h = GAME_H;
     const cvs = document.createElement('canvas');
     cvs.width = w; cvs.height = h;
     const ctx = cvs.getContext('2d');
     
     // Riser body
     const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#3366cc');
-    grad.addColorStop(0.5, '#5588ee');
+    grad.addColorStop(0, '#4477ee');
+    grad.addColorStop(0.5, '#6699ff');
     grad.addColorStop(1, '#2244aa');
     ctx.fillStyle = grad;
     
     ctx.beginPath();
     ctx.moveTo(w, 0);
-    ctx.lineTo(w - 30, 0);
-    ctx.lineTo(w - 60, h / 2 - 120);
-    ctx.lineTo(w - 75, h / 2 - 20); // mount area
-    ctx.lineTo(w - 75, h / 2 + 20);
-    ctx.lineTo(w - 60, h / 2 + 120);
-    ctx.lineTo(w - 30, h);
+    ctx.lineTo(w - 15, 0);
+    ctx.lineTo(w - 30, h / 2 - 120);
+    ctx.lineTo(w - 50, h / 2 - 20); // mount area
+    ctx.lineTo(w - 50, h / 2 + 20);
+    ctx.lineTo(w - 30, h / 2 + 120);
+    ctx.lineTo(w - 15, h);
     ctx.lineTo(w, h);
     ctx.fill();
 
     // Add some metallic details
     ctx.fillStyle = '#111111';
-    ctx.beginPath(); ctx.arc(w - 50, h/2 - 80, 8, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(w - 50, h/2 + 80, 8, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w - 35, h/2 - 80, 6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w - 35, h/2 + 80, 6, 0, Math.PI*2); ctx.fill();
 
-    // Arrow Shaft
-    ctx.lineWidth = 12;
-    ctx.strokeStyle = '#2a2a2a';
+    // Arrow Shaft (horizontal pointing left)
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#111';
     ctx.beginPath();
-    ctx.moveTo(w, h / 2 + 150);
-    ctx.lineTo(w - 70, h / 2 + 30);
+    ctx.moveTo(w, h / 2 + 40);
+    ctx.lineTo(10, h / 2 + 40);
     ctx.stroke();
     
-    // Fletchings
-    ctx.fillStyle = '#ff1111';
+    // Silver arrowhead
+    ctx.fillStyle = '#ddd';
     ctx.beginPath();
-    ctx.moveTo(w - 10, h / 2 + 140);
-    ctx.lineTo(w + 20, h / 2 + 110);
-    ctx.lineTo(w - 20, h / 2 + 115);
+    ctx.moveTo(10, h / 2 + 40);
+    ctx.lineTo(25, h / 2 + 35);
+    ctx.lineTo(25, h / 2 + 45);
+    ctx.fill();
+
+    // Fletchings (feathers) at the right edge
+    ctx.fillStyle = '#ff2222';
+    ctx.beginPath();
+    ctx.moveTo(w, h / 2 + 40);
+    ctx.lineTo(w - 15, h / 2 + 30);
+    ctx.lineTo(w - 30, h / 2 + 40);
     ctx.fill();
     
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(w - 20, h / 2 + 155);
-    ctx.lineTo(w - 50, h / 2 + 130);
-    ctx.lineTo(w - 30, h / 2 + 125);
+    ctx.moveTo(w, h / 2 + 40);
+    ctx.lineTo(w - 15, h / 2 + 50);
+    ctx.lineTo(w - 30, h / 2 + 40);
     ctx.fill();
 
     scene.textures.addCanvas('bow', cvs);
@@ -756,10 +764,10 @@ function createArcheryScene(onGameFinished) {
       };
 
       // ── Single tall glass pill (two rows) ────────────────────────────────
-      const BAR_H = 76;   // tall enough for two rows
-      const BAR_Y = 8;
-      const R1_Y  = BAR_Y + 16;   // row 1 text top-y
-      const R2_Y  = BAR_Y + 46;   // row 2 center-y
+      const BAR_H = 86;   // taller for emojis
+      const BAR_Y = 12;
+      const R1_Y  = BAR_Y + 12;   // row 1 text top-y
+      const R2_Y  = BAR_Y + 56;   // row 2 center-y
 
       const barGfx = this.add.graphics();
       barGfx.fillStyle(0x000814, 0.68);
@@ -769,7 +777,7 @@ function createArcheryScene(onGameFinished) {
 
       // Thin divider between rows
       barGfx.lineStyle(1, 0x1a3a55, 0.6);
-      barGfx.lineBetween(18, BAR_Y + 36, GAME_W - 18, BAR_Y + 36);
+      barGfx.lineBetween(18, BAR_Y + 42, GAME_W - 18, BAR_Y + 42);
 
       // ── Row 1: arrows (left) + score (right) ─────────────────────────────
       this.arrowsText = this.add.text(20, R1_Y, '', {
