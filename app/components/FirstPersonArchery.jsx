@@ -139,45 +139,114 @@ function generateTextures(scene) {
     scene.textures.addCanvas('target', cvs);
   }
 
-  // ── crosshair ────────────────────────────────────────────────────────────
+  // ── crosshair (bow sight) ────────────────────────────────────────────────
   {
-    const size = 110;
-    const cx = size / 2, cy = size / 2;
+    const w = 240, h = 160;
     const cvs = document.createElement('canvas');
-    cvs.width = size; cvs.height = size;
+    cvs.width = w; cvs.height = h;
     const ctx = cvs.getContext('2d');
+    const cx = 80, cy = 80; // center of the ring is on the left side of this canvas
 
-    const outerR = 30, gapLen = 9, tickLen = 20;
+    // The rod going to the right (connects to bow)
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(cx, cy - 6, w - cx, 12);
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(cx, cy + 2, w - cx, 4);
 
-    // Outer ring glow
-    ctx.shadowColor = '#00ffcc';
-    ctx.shadowBlur  = 10;
-    ctx.strokeStyle = '#00ffcc';
-    ctx.lineWidth   = 2.5;
+    // Thick outer ring
     ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#1a1a1a';
     ctx.stroke();
 
-    // Tick marks
-    ctx.lineWidth = 2.5;
-    [
-      [cx, cy - gapLen,    cx, cy - gapLen - tickLen],
-      [cx, cy + gapLen,    cx, cy + gapLen + tickLen],
-      [cx - gapLen, cy,    cx - gapLen - tickLen, cy],
-      [cx + gapLen, cy,    cx + gapLen + tickLen, cy],
-    ].forEach(([x1, y1, x2, y2]) => {
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    });
-
-    // Center dot
-    ctx.shadowColor = '#ff0055';
-    ctx.shadowBlur  = 8;
-    ctx.fillStyle   = '#ff0055';
+    // Inner bevel
     ctx.beginPath();
-    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 53, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#444444';
+    ctx.stroke();
+
+    // Glass reflection
+    const grad = ctx.createLinearGradient(cx - 50, cy - 50, cx + 50, cy + 50);
+    grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 52, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Thin crosshair
+    ctx.beginPath();
+    ctx.moveTo(cx - 52, cy); ctx.lineTo(cx + 52, cy);
+    ctx.moveTo(cx, cy - 52); ctx.lineTo(cx, cy + 52);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#000000';
+    ctx.stroke();
+
+    // Small center dot
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fill();
 
     scene.textures.addCanvas('crosshair', cvs);
+  }
+
+  // ── bow riser ────────────────────────────────────────────────────────────
+  {
+    const w = 120, h = GAME_H;
+    const cvs = document.createElement('canvas');
+    cvs.width = w; cvs.height = h;
+    const ctx = cvs.getContext('2d');
+    
+    // Riser body
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#3366cc');
+    grad.addColorStop(0.5, '#5588ee');
+    grad.addColorStop(1, '#2244aa');
+    ctx.fillStyle = grad;
+    
+    ctx.beginPath();
+    ctx.moveTo(w, 0);
+    ctx.lineTo(w - 30, 0);
+    ctx.lineTo(w - 60, h / 2 - 120);
+    ctx.lineTo(w - 75, h / 2 - 20); // mount area
+    ctx.lineTo(w - 75, h / 2 + 20);
+    ctx.lineTo(w - 60, h / 2 + 120);
+    ctx.lineTo(w - 30, h);
+    ctx.lineTo(w, h);
+    ctx.fill();
+
+    // Add some metallic details
+    ctx.fillStyle = '#111111';
+    ctx.beginPath(); ctx.arc(w - 50, h/2 - 80, 8, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w - 50, h/2 + 80, 8, 0, Math.PI*2); ctx.fill();
+
+    // Arrow Shaft
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.beginPath();
+    ctx.moveTo(w, h / 2 + 150);
+    ctx.lineTo(w - 70, h / 2 + 30);
+    ctx.stroke();
+    
+    // Fletchings
+    ctx.fillStyle = '#ff1111';
+    ctx.beginPath();
+    ctx.moveTo(w - 10, h / 2 + 140);
+    ctx.lineTo(w + 20, h / 2 + 110);
+    ctx.lineTo(w - 20, h / 2 + 115);
+    ctx.fill();
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(w - 20, h / 2 + 155);
+    ctx.lineTo(w - 50, h / 2 + 130);
+    ctx.lineTo(w - 30, h / 2 + 125);
+    ctx.fill();
+
+    scene.textures.addCanvas('bow', cvs);
   }
 
   // ── target stand (separate from bg so it moves with the target) ──────────
@@ -253,10 +322,13 @@ function createArcheryScene(onGameFinished) {
     baseOffsetY = 0;
 
     // Phaser game objects
+    worldContainer = null;
+    uiContainer  = null;
     bgSprite     = null;
     standSprite  = null;
     targetSprite = null;
     crosshairSpr = null;
+    bowSpr       = null;
     arrowGfx     = null;
     windText     = null;
     windArrow    = null;
@@ -273,34 +345,39 @@ function createArcheryScene(onGameFinished) {
 
       generateTextures(this);
 
+      this.worldContainer = this.add.container(0, 0);
+      this.uiContainer = this.add.container(0, 0).setDepth(200);
+
       // ── Background (oversized; panning anchor = center of canvas) ────────
-      // The bg is 2×GAME_W wide; we position its center over the canvas center
-      // so there is equal overhang on each side for panning.
-      this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, 'bg_gradient')
-        .setOrigin(0.5, 0.5);
+      this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, 'bg_gradient').setOrigin(0.5, 0.5);
 
-      // ── Target stand (child of world so it pans with target) ──────────────
-      this.standSprite = this.add.image(
-        TARGET_X,
-        TARGET_Y + TARGET_RADIUS,
-        'target_stand'
-      ).setOrigin(0.5, 0);
-
-      // ── Target ───────────────────────────────────────────────────────────
-      this.targetSprite = this.add.image(TARGET_X, TARGET_Y, 'target')
-        .setOrigin(0.5, 0.5);
+      // ── Target & Stand ───────────────────────────────────────────────────
+      this.standSprite = this.add.image(TARGET_X, TARGET_Y + TARGET_RADIUS, 'target_stand').setOrigin(0.5, 0);
+      this.targetSprite = this.add.image(TARGET_X, TARGET_Y, 'target').setOrigin(0.5, 0.5);
 
       // ── Arrow graphics (flight animation) ────────────────────────────────
-      this.arrowGfx = this.add.graphics();
-      this.arrowGfx.setVisible(false);
+      this.arrowGfx = this.add.graphics().setVisible(false);
 
-      // ── Crosshair — FIXED at dead center, always on top ──────────────────
+      // ── Sight & Bow ──────────────────────────────────────────────────────
       this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'crosshair')
-        .setOrigin(0.5, 0.5)
-        .setDepth(100);          // always above world objects
+        .setOrigin(80 / 240, 0.5)
+        .setDepth(100);
+      
+      this.bowSpr = this.add.image(GAME_W, GAME_H / 2, 'bow')
+        .setOrigin(1, 0.5)
+        .setDepth(99);
+
+      this.worldContainer.add([
+        this.bgSprite, this.standSprite, this.targetSprite, this.arrowGfx, this.crosshairSpr, this.bowSpr
+      ]);
 
       // ── HUD ──────────────────────────────────────────────────────────────
       this.createHUD();
+
+      // Setup UI camera to ignore world, and main camera to ignore UI
+      this.cameras.main.ignore(this.uiContainer);
+      this.uiCamera = this.cameras.add(0, 0, GAME_W, GAME_H);
+      this.uiCamera.ignore(this.worldContainer);
 
       // ── Input: drag to aim, release to fire ──────────────────────────────
       this.input.on('pointerdown', this.onPointerDown, this);
@@ -332,17 +409,11 @@ function createArcheryScene(onGameFinished) {
       // Crosshair stays exactly at center
       this.crosshairSpr.setPosition(GAME_W / 2, GAME_H / 2);
 
-      // Crosshair styling (pulse heavily when drawing)
+      // Hide sight when firing
       if (this.isFiring) {
         this.crosshairSpr.setAlpha(0);
-      } else if (this.isDrawing) {
-        const pulse = 0.70 + Math.sin(this.time.now / 150) * 0.30;
-        this.crosshairSpr.setAlpha(pulse);
-        this.crosshairSpr.setScale(1.1);
       } else {
-        const alpha = 0.60 + Math.sin(this.time.now / 420) * 0.18;
-        this.crosshairSpr.setAlpha(alpha);
-        this.crosshairSpr.setScale(1.0);
+        this.crosshairSpr.setAlpha(1);
       }
     }
 
@@ -354,6 +425,9 @@ function createArcheryScene(onGameFinished) {
       this.dragStartY = ptr.y;
       this.baseOffsetX = this.targetOffsetX;
       this.baseOffsetY = this.targetOffsetY;
+      
+      // Zoom in
+      this.cameras.main.zoomTo(1.7, 300, 'Sine.easeOut');
     }
 
     onPointerMove(ptr) {
@@ -376,6 +450,9 @@ function createArcheryScene(onGameFinished) {
       if (!this.isDrawing) return;
       this.isDrawing = false;
       
+      // Zoom out
+      this.cameras.main.zoomTo(1.0, 200, 'Sine.easeOut');
+
       // Fire on release
       this.fireArrow();
     }
@@ -551,6 +628,7 @@ function createArcheryScene(onGameFinished) {
         const vy      = Math.sin(angle) * speed;
         const size    = 3 + Math.random() * 5;
         const spark   = this.add.graphics().setDepth(90);
+        this.worldContainer.add(spark);
         spark.fillStyle(color, 1);
         Math.random() > 0.5
           ? spark.fillCircle(0, 0, size / 2)
@@ -570,6 +648,7 @@ function createArcheryScene(onGameFinished) {
       }
 
       const flash = this.add.graphics().setDepth(90);
+      this.worldContainer.add(flash);
       flash.lineStyle(3, color, 1);
       flash.strokeCircle(x, y, 6);
       this.tweens.add({
@@ -592,6 +671,7 @@ function createArcheryScene(onGameFinished) {
       if (!this._impactMarkers) this._impactMarkers = [];
 
       const g = this.add.graphics().setDepth(50);
+      this.worldContainer.add(g);
       // Draw relative to its own (0,0)
       g.lineStyle(2.5, 0xd4a85a, 0.9);
       g.lineBetween(0, -12, 0, 5);
@@ -632,7 +712,8 @@ function createArcheryScene(onGameFinished) {
           color:      '#ffd700',
           stroke:     '#000814',
           strokeThickness: 7,
-        }).setOrigin(0.5).setDepth(200).setVisible(false);
+        }).setOrigin(0.5).setVisible(false);
+        this.uiContainer.add(this.scorePopup);
       }
 
       this.scorePopup
@@ -680,7 +761,7 @@ function createArcheryScene(onGameFinished) {
       const R1_Y  = BAR_Y + 16;   // row 1 text top-y
       const R2_Y  = BAR_Y + 46;   // row 2 center-y
 
-      const barGfx = this.add.graphics().setDepth(150);
+      const barGfx = this.add.graphics();
       barGfx.fillStyle(0x000814, 0.68);
       barGfx.fillRoundedRect(8, BAR_Y, GAME_W - 16, BAR_H, 16);
       barGfx.lineStyle(1, 0x2266aa, 0.55);
@@ -693,27 +774,27 @@ function createArcheryScene(onGameFinished) {
       // ── Row 1: arrows (left) + score (right) ─────────────────────────────
       this.arrowsText = this.add.text(20, R1_Y, '', {
         ...fontBase, fontSize: '20px',
-      }).setDepth(151);
+      });
       this.updateArrowsText();
 
       this.totalText = this.add.text(GAME_W - 18, R1_Y, 'SCORE  0', {
         ...fontBase, fontSize: '17px', align: 'right', color: '#ffd700',
-      }).setOrigin(1, 0).setDepth(151);
+      }).setOrigin(1, 0);
 
       // ── Row 2: wind arrow + speed (center-left) + calibrate (right) ──────
       // Wind label
       const windLabel = this.add.text(20, R2_Y, '💨', {
         fontSize: '14px',
-      }).setOrigin(0, 0.5).setDepth(151);
+      }).setOrigin(0, 0.5);
 
       // Rotatable wind direction arrow sprite
       this.windArrow = this.add.image(52, R2_Y, 'wind_arrow')
-        .setOrigin(0.5, 0.5).setScale(0.7).setDepth(151);
+        .setOrigin(0.5, 0.5).setScale(0.7);
 
       // Wind speed text
       this.windText = this.add.text(68, R2_Y, '', {
         ...fontBase, fontSize: '15px', color: '#64ddff',
-      }).setOrigin(0, 0.5).setDepth(151);
+      }).setOrigin(0, 0.5);
 
       this.updateWindHUD();
 
@@ -726,8 +807,10 @@ function createArcheryScene(onGameFinished) {
         wordWrap: { width: GAME_W - 40 },
         stroke: '#000814',
         strokeThickness: 3,
-      }).setOrigin(0.5).setDepth(151);
+      }).setOrigin(0.5);
       this.tweens.add({ targets: hint, alpha: 0, delay: 5000, duration: 1200 });
+
+      this.uiContainer.add([barGfx, this.arrowsText, this.totalText, windLabel, this.windArrow, this.windText, hint]);
     }
 
     // ── UI helpers ─────────────────────────────────────────────────────────
@@ -752,11 +835,11 @@ function createArcheryScene(onGameFinished) {
 
     // ── End Game ───────────────────────────────────────────────────────────
     endGame() {
-      const overlay = this.add.graphics().setDepth(180);
+      const overlay = this.add.graphics();
       overlay.fillStyle(0x000814, 0.72);
       overlay.fillRect(0, 0, GAME_W, GAME_H);
 
-      const card = this.add.graphics().setDepth(181);
+      const card = this.add.graphics();
       card.fillStyle(0x0d1b2a, 0.92);
       card.fillRoundedRect(GAME_W / 2 - 130, GAME_H / 2 - 110, 260, 200, 20);
       card.lineStyle(1.5, 0x2266aa, 0.7);
@@ -765,9 +848,11 @@ function createArcheryScene(onGameFinished) {
       const cx = GAME_W / 2, cy = GAME_H / 2;
       const tf = { fontFamily: "'Rajdhani', 'Inter', sans-serif", stroke: '#000814', strokeThickness: 5 };
 
-      this.add.text(cx, cy - 80, 'Round Over!', { ...tf, fontSize: '34px', fontStyle: 'bold', color: '#ffd700' }).setOrigin(0.5).setDepth(182);
-      this.add.text(cx, cy - 20, 'Total Score', { ...tf, fontSize: '16px', color: 'rgba(150,200,255,0.8)', strokeThickness: 2 }).setOrigin(0.5).setDepth(182);
-      this.add.text(cx, cy + 28, `${this.totalScore}`, { ...tf, fontSize: '52px', fontStyle: 'bold', color: '#ffffff', strokeThickness: 4 }).setOrigin(0.5).setDepth(182);
+      const t1 = this.add.text(cx, cy - 80, 'Round Over!', { ...tf, fontSize: '34px', fontStyle: 'bold', color: '#ffd700' }).setOrigin(0.5);
+      const t2 = this.add.text(cx, cy - 20, 'Total Score', { ...tf, fontSize: '16px', color: 'rgba(150,200,255,0.8)', strokeThickness: 2 }).setOrigin(0.5);
+      const t3 = this.add.text(cx, cy + 28, `${this.totalScore}`, { ...tf, fontSize: '52px', fontStyle: 'bold', color: '#ffffff', strokeThickness: 4 }).setOrigin(0.5);
+
+      this.uiContainer.add([overlay, card, t1, t2, t3]);
 
       this.time.delayedCall(1800, () => {
         if (typeof onGameFinished === 'function') onGameFinished(this.totalScore, this.shotsLog);
