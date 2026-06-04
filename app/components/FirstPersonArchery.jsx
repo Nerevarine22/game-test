@@ -659,6 +659,13 @@ function createArcheryScene(onGameFinished) {
     }
 
     // ── HUD ────────────────────────────────────────────────────────────────
+    // Layout: single tall top bar (two rows) so nothing overflows on mobile.
+    //
+    //  ┌─────────────────────────────────────────┐  y=8
+    //  │  🏹🏹🏹   [row 1, y≈24]       SCORE 0  │
+    //  │  divider line                            │
+    //  │  💨 ← 48 px/s     [row 2, y≈50]  ⊕Cal  │
+    //  └─────────────────────────────────────────┘  y=72
     createHUD() {
       const fontBase = {
         fontFamily: "'Rajdhani', 'Inter', sans-serif",
@@ -667,65 +674,80 @@ function createArcheryScene(onGameFinished) {
         strokeThickness: 3,
       };
 
-      // Top glass pill
-      const barGfx = this.add.graphics().setDepth(150);
-      barGfx.fillStyle(0x000814, 0.6);
-      barGfx.fillRoundedRect(8, 8, GAME_W - 16, 52, 14);
-      barGfx.lineStyle(1, 0x2266aa, 0.5);
-      barGfx.strokeRoundedRect(8, 8, GAME_W - 16, 52, 14);
+      // ── Single tall glass pill (two rows) ────────────────────────────────
+      const BAR_H = 76;   // tall enough for two rows
+      const BAR_Y = 8;
+      const R1_Y  = BAR_Y + 16;   // row 1 text top-y
+      const R2_Y  = BAR_Y + 46;   // row 2 center-y
 
-      this.arrowsText = this.add.text(22, 20, '', {
-        ...fontBase, fontSize: '22px',
+      const barGfx = this.add.graphics().setDepth(150);
+      barGfx.fillStyle(0x000814, 0.68);
+      barGfx.fillRoundedRect(8, BAR_Y, GAME_W - 16, BAR_H, 16);
+      barGfx.lineStyle(1, 0x2266aa, 0.55);
+      barGfx.strokeRoundedRect(8, BAR_Y, GAME_W - 16, BAR_H, 16);
+
+      // Thin divider between rows
+      barGfx.lineStyle(1, 0x1a3a55, 0.6);
+      barGfx.lineBetween(18, BAR_Y + 36, GAME_W - 18, BAR_Y + 36);
+
+      // ── Row 1: arrows (left) + score (right) ─────────────────────────────
+      this.arrowsText = this.add.text(20, R1_Y, '', {
+        ...fontBase, fontSize: '20px',
       }).setDepth(151);
       this.updateArrowsText();
 
-      this.totalText = this.add.text(GAME_W - 22, 20, 'SCORE  0', {
-        ...fontBase, fontSize: '18px', align: 'right', color: '#ffd700',
+      this.totalText = this.add.text(GAME_W - 18, R1_Y, 'SCORE  0', {
+        ...fontBase, fontSize: '17px', align: 'right', color: '#ffd700',
       }).setOrigin(1, 0).setDepth(151);
 
-      // Wind pill
-      const windBarGfx = this.add.graphics().setDepth(150);
-      windBarGfx.fillStyle(0x000814, 0.5);
-      windBarGfx.fillRoundedRect(GAME_W / 2 - 75, 66, 150, 34, 10);
-      windBarGfx.lineStyle(1, 0x1a88ff, 0.4);
-      windBarGfx.strokeRoundedRect(GAME_W / 2 - 75, 66, 150, 34, 10);
+      // ── Row 2: wind arrow + speed (center-left) + calibrate (right) ──────
+      // Wind label
+      const windLabel = this.add.text(20, R2_Y, '💨', {
+        fontSize: '14px',
+      }).setOrigin(0, 0.5).setDepth(151);
 
-      this.windArrow = this.add.image(GAME_W / 2 - 42, 83, 'wind_arrow')
-        .setOrigin(0.5).setScale(0.75).setDepth(151);
+      // Rotatable wind direction arrow sprite
+      this.windArrow = this.add.image(52, R2_Y, 'wind_arrow')
+        .setOrigin(0.5, 0.5).setScale(0.7).setDepth(151);
 
-      this.windText = this.add.text(GAME_W / 2 - 20, 83, '', {
+      // Wind speed text
+      this.windText = this.add.text(68, R2_Y, '', {
         ...fontBase, fontSize: '15px', color: '#64ddff',
       }).setOrigin(0, 0.5).setDepth(151);
 
       this.updateWindHUD();
 
-      // Calibrate button (bottom left)
-      const calibGfx = this.add.graphics().setDepth(150);
-      calibGfx.fillStyle(0x000814, 0.55);
-      calibGfx.fillRoundedRect(10, GAME_H - 60, 110, 40, 10);
-      calibGfx.lineStyle(1, 0x2266aa, 0.5);
-      calibGfx.strokeRoundedRect(10, GAME_H - 60, 110, 40, 10);
-
-      this.calibBtn = this.add.text(65, GAME_H - 40, '⊕ Recalibrate', {
+      // Calibrate button — right side of row 2
+      this.calibBtn = this.add.text(GAME_W - 18, R2_Y, '⊕ Cal', {
         fontFamily: "'Rajdhani', 'Inter', sans-serif",
-        fontSize: '13px',
+        fontSize: '14px',
         color: '#64ddff',
-      }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
+        stroke: '#000814',
+        strokeThickness: 2,
+      }).setOrigin(1, 0.5).setDepth(151).setInteractive({ useHandCursor: true });
 
       this.calibBtn.on('pointerdown', (ptr) => {
-        ptr.event.stopPropagation();   // don't accidentally fire an arrow
-        // Re-calibrate using last known raw gyro values
+        ptr.event.stopPropagation();
         if (this._lastBeta !== undefined) {
           this.calibrateGyro(this._lastBeta, this._lastGamma);
+          // Brief flash feedback
+          this.tweens.add({
+            targets: this.calibBtn,
+            alpha: 0.2,
+            duration: 80,
+            yoyo: true,
+            repeat: 1,
+          });
         }
       });
 
-      // Shoot hint
-      const hint = this.add.text(GAME_W / 2, GAME_H - 40, 'Tilt to aim  •  Tap to shoot', {
+      // ── Hint text — raised well above home indicator ──────────────────────
+      const hint = this.add.text(GAME_W / 2, GAME_H - 130, 'Нахили телефон для прицілу  •  Тап — постріл', {
         fontFamily: "'Rajdhani', 'Inter', sans-serif",
-        fontSize: '14px',
+        fontSize: '13px',
         color: 'rgba(180,220,255,0.7)',
         align: 'center',
+        wordWrap: { width: GAME_W - 40 },
       }).setOrigin(0.5).setDepth(151);
       this.tweens.add({ targets: hint, alpha: 0, delay: 4000, duration: 1200 });
     }
@@ -734,10 +756,16 @@ function createArcheryScene(onGameFinished) {
     updateWindHUD() {
       const dir = Math.atan2(this.wind.y, this.wind.x);
       const spd = Math.sqrt(this.wind.x ** 2 + this.wind.y ** 2);
+
+      // Rotate wind arrow to actual wind direction
       this.windArrow.setRotation(dir);
-      const scl = Phaser.Math.Linear(0.5, 1.1, (spd - 30) / 70);
-      this.windArrow.setScale(scl);
-      this.windText.setText(`${Math.round(spd)} px/s`);
+      // Keep scale fixed — scaling inside the bar looks cleaner
+      this.windArrow.setScale(0.75);
+
+      // Show cardinal direction text + speed
+      const dirs = ['→','↘','↓','↙','←','↖','↑','↗'];
+      const idx  = Math.round((dir / (Math.PI * 2) + 1) * 8) % 8;
+      this.windText.setText(`${dirs[idx]}  ${Math.round(spd)} px/s`);
     }
 
     updateArrowsText() {
