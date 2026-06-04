@@ -9,6 +9,7 @@ const FirstPersonArchery = dynamic(
   { ssr: false, loading: () => <GameLoader /> }
 );
 
+// ─── Loading spinner ──────────────────────────────────────────────────────────
 function GameLoader() {
   return (
     <div className="game-loader">
@@ -18,9 +19,61 @@ function GameLoader() {
   );
 }
 
+// ─── iOS Gyro Permission Gate ─────────────────────────────────────────────────
+// On iOS 13+ DeviceOrientationEvent.requestPermission must be called from a
+// direct user gesture (tap). We show this screen first on iOS, then mount Phaser.
+function GyroPermissionScreen({ onGranted, onDenied }) {
+  const [status, setStatus] = useState('idle'); // 'idle' | 'requesting' | 'denied'
+
+  const handleRequest = useCallback(async () => {
+    setStatus('requesting');
+    try {
+      const result = await DeviceOrientationEvent.requestPermission();
+      if (result === 'granted') {
+        onGranted();
+      } else {
+        setStatus('denied');
+        onDenied();
+      }
+    } catch (err) {
+      console.warn('DeviceOrientation permission error:', err);
+      // Treat errors (e.g. already granted) as granted
+      onGranted();
+    }
+  }, [onGranted, onDenied]);
+
+  return (
+    <div className="gyro-permission-screen">
+      <div className="gyro-card">
+        <div className="gyro-icon">📱</div>
+        <h2 className="gyro-title">Motion Controls</h2>
+        <p className="gyro-desc">
+          This game uses your phone's gyroscope to aim.<br />
+          Tilt your phone to move the target — tap to shoot.
+        </p>
+
+        {status === 'denied' ? (
+          <p className="gyro-denied">
+            ⚠️ Permission denied. Please allow motion access in<br />
+            <strong>Settings → Safari → Motion &amp; Orientation Access</strong>
+          </p>
+        ) : (
+          <button
+            className="btn-gyro-grant"
+            onClick={handleRequest}
+            disabled={status === 'requesting'}
+          >
+            {status === 'requesting' ? 'Requesting…' : '🎯 Enable Motion &amp; Play'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Results screen ───────────────────────────────────────────────────────────
 function ResultsScreen({ score, shots, onRestart }) {
   const maxScore = 3 * 10;
-  const pct = Math.round((score / maxScore) * 100);
   const rank =
     score >= 25 ? 'Master Archer 🏆' :
     score >= 18 ? 'Skilled Archer 🥈' :
@@ -57,9 +110,23 @@ function ResultsScreen({ score, shots, onRestart }) {
   );
 }
 
+// ─── Detect iOS (needs permission dialog) ─────────────────────────────────────
+function needsGyroPermission() {
+  if (typeof window === 'undefined') return false;
+  return (
+    typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission === 'function'
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function GamePage() {
-  const [gameKey,  setGameKey]  = useState(0);
-  const [results,  setResults]  = useState(null); // { score, shots }
+  const [gameKey,    setGameKey]    = useState(0);
+  const [results,    setResults]    = useState(null);
+  // 'pending' = not yet decided, 'granted' = ready to play, 'denied' = blocked
+  const [gyroStatus, setGyroStatus] = useState(() =>
+    needsGyroPermission() ? 'pending' : 'granted'
+  );
 
   const handleGameFinished = useCallback((totalScore, shotsLog) => {
     setResults({ score: totalScore, shots: shotsLog });
@@ -67,15 +134,18 @@ export default function GamePage() {
 
   const handleRestart = useCallback(() => {
     setResults(null);
-    setGameKey(k => k + 1); // remount Phaser
+    setGameKey(k => k + 1);
   }, []);
+
+  const handleGyroGranted = useCallback(() => setGyroStatus('granted'), []);
+  const handleGyroDenied  = useCallback(() => setGyroStatus('denied'),  []);
 
   return (
     <div className="game-page">
       {/* Header */}
       <header className="game-header">
         <h1 className="game-logo">🏹 Archery</h1>
-        <p className="game-tagline">First Person · 3 Arrows · Wind Challenge</p>
+        <p className="game-tagline">First Person · 3 Arrows · Gyro Aim</p>
       </header>
 
       {/* Game area */}
@@ -86,10 +156,17 @@ export default function GamePage() {
             shots={results.shots}
             onRestart={handleRestart}
           />
+        ) : gyroStatus === 'pending' ? (
+          // iOS must grant permission before Phaser mounts
+          <GyroPermissionScreen
+            onGranted={handleGyroGranted}
+            onDenied={handleGyroDenied}
+          />
         ) : (
           <FirstPersonArchery
             key={gameKey}
             onGameFinished={handleGameFinished}
+            gyroPermissionGranted={gyroStatus === 'granted'}
           />
         )}
       </main>

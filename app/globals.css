@@ -347,3 +347,106 @@ html, body {
 }
 
 .btn-restart:active { transform: translateY(1px); }
+
+/* ── Gyro Permission Screen ─────────────────────────────────── */
+.gyro-permission-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 2rem;
+  animation: fadeUp 0.4s ease both;
+}
+
+.gyro-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+  width: 100%;
+  max-width: 340px;
+  background: rgba(13, 27, 42, 0.92);
+  border: 1px solid rgba(34, 102, 170, 0.6);
+  border-radius: 24px;
+  padding: 2.4rem 1.8rem;
+  box-shadow:
+    0 0 0 1px rgba(100, 221, 255, 0.08),
+    0 24px 60px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.gyro-icon {
+  font-size: 3.4rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 16px rgba(100, 221, 255, 0.4));
+  animation: tiltPhone 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes tiltPhone {
+  0%   { transform: rotate(-14deg); }
+  100% { transform: rotate(14deg);  }
+}
+
+.gyro-title {
+  font-size: 1.55rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #64ddff, #00f0ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: center;
+}
+
+.gyro-desc {
+  font-size: 0.92rem;
+  color: rgba(200, 220, 255, 0.75);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.gyro-denied {
+  font-size: 0.88rem;
+  color: #ff6b6b;
+  text-align: center;
+  line-height: 1.6;
+  background: rgba(255, 60, 60, 0.08);
+  border: 1px solid rgba(255, 60, 60, 0.25);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+}
+
+.btn-gyro-grant {
+  background: linear-gradient(135deg, #1a88ff, #00f0ff);
+  border: none;
+  border-radius: 50px;
+  color: #fff;
+  font-family: 'Rajdhani', 'Outfit', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.9rem 2.2rem;
+  cursor: pointer;
+  width: 100%;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    0 0 20px rgba(0, 240, 255, 0.25);
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-gyro-grant::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+  transform: translateX(-100%);
+  transition: transform 0.55s ease;
+}
+
+.btn-gyro-grant:hover::after   { transform: translateX(100%); }
+.btn-gyro-grant:hover          { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.4), 0 0 28px rgba(0,240,255,0.45); }
+.btn-gyro-grant:active         { transform: translateY(1px); }
+.btn-gyro-grant:disabled       { opacity: 0.55; cursor: default; }
+

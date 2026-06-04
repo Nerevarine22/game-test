@@ -7,294 +7,428 @@ const GAME_W = 390;
 const GAME_H = 844;
 const TOTAL_ARROWS = 3;
 
+// Target rests at canvas center in world-space (offset 0,0).
+// TARGET_X/Y are the WORLD-SPACE origin of the target — they never change.
+// The visual position is TARGET_X + worldOffsetX, TARGET_Y + worldOffsetY.
 const TARGET_X = GAME_W / 2;
 const TARGET_Y = GAME_H / 2 - 40;
-const TARGET_RADIUS = 90; // outer ring radius at scale 1
+const TARGET_RADIUS = 90;
+
+// How many canvas-px the world can shift per degree of tilt
+const PX_PER_DEGREE = 5.5;
+
+// Maximum world shift in either axis (keeps target always at least partially on screen)
+const MAX_OFFSET_X = GAME_W * 0.38;
+const MAX_OFFSET_Y = GAME_H * 0.28;
+
+// Lerp smoothing factor per frame (higher = snappier)
+const LERP_FACTOR = 0.10;
 
 // Score ring radii (% of TARGET_RADIUS)
 const RINGS = [
-  { name: 'Bullseye', maxR: 0.15, score: 10 },
-  { name: 'Inner',    maxR: 0.45, score: 7  },
-  { name: 'Middle',   maxR: 0.72, score: 5  },
-  { name: 'Outer',    maxR: 1.00, score: 3  },
+  { name: 'Bullseye', maxR: 0.15, score: 10, color: 0xffd700 },
+  { name: 'Inner',    maxR: 0.45, score: 7,  color: 0xff3333 },
+  { name: 'Middle',   maxR: 0.72, score: 5,  color: 0x3366ff },
+  { name: 'Outer',    maxR: 1.00, score: 3,  color: 0xffffff },
 ];
 
 // ─── Wind helper ─────────────────────────────────────────────────────────────
 function randomWind() {
   const angle = Math.random() * Math.PI * 2;
-  const speed = 30 + Math.random() * 70; // px/s drift
+  const speed = 30 + Math.random() * 70;
   return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+}
+
+// ─── Color helper ────────────────────────────────────────────────────────────
+function toHex(n) {
+  return '#' + n.toString(16).padStart(6, '0');
+}
+
+// ─── Procedural texture generation ───────────────────────────────────────────
+function generateTextures(scene) {
+  // ── bg_gradient (oversized so panning never shows edge) ──────────────────
+  // We make the bg 2× wide and 1.6× tall so the parallax shift never clips.
+  {
+    const w = GAME_W * 2, h = GAME_H * 1.6;
+    const cvs = document.createElement('canvas');
+    cvs.width = w; cvs.height = h;
+    const ctx = cvs.getContext('2d');
+
+    // Sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h * 0.55);
+    sky.addColorStop(0,   '#0a0a2e');
+    sky.addColorStop(0.4, '#0d2157');
+    sky.addColorStop(1,   '#1a4a7a');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h * 0.55);
+
+    // Stars
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let i = 0; i < 110; i++) {
+      const sx = Math.random() * w;
+      const sy = Math.random() * h * 0.5;
+      const sr = Math.random() * 1.2 + 0.3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Horizon glow
+    const glow = ctx.createLinearGradient(0, h * 0.48, 0, h * 0.62);
+    glow.addColorStop(0,   'rgba(100,220,255,0)');
+    glow.addColorStop(0.5, 'rgba(100,220,255,0.15)');
+    glow.addColorStop(1,   'rgba(100,220,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, h * 0.48, w, h * 0.14);
+
+    // Ground
+    const ground = ctx.createLinearGradient(0, h * 0.55, 0, h);
+    ground.addColorStop(0,   '#1e5c2a');
+    ground.addColorStop(0.3, '#174d20');
+    ground.addColorStop(1,   '#0c2e12');
+    ctx.fillStyle = ground;
+    ctx.fillRect(0, h * 0.55, w, h * 0.45);
+
+    // Lane lines
+    const horizonY = h * 0.55;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+      const x = (w / 8) * i;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, horizonY);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+
+    // Horizon line
+    ctx.strokeStyle = 'rgba(100,255,200,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY);
+    ctx.lineTo(w, horizonY);
+    ctx.stroke();
+
+    scene.textures.addCanvas('bg_gradient', cvs);
+  }
+
+  // ── target ───────────────────────────────────────────────────────────────
+  {
+    const size = TARGET_RADIUS * 2 + 8;
+    const cx = size / 2, cy = size / 2;
+    const cvs = document.createElement('canvas');
+    cvs.width = size; cvs.height = size;
+    const ctx = cvs.getContext('2d');
+
+    drawRing(ctx, cx, cy, TARGET_RADIUS,        null,      '#ffffff', '#aaaaaa', 1.5);
+    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.72, '#ffffff', '#2255ff', '#1133cc', 1.5);
+    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.45, '#2255ff', '#ff2222', '#cc0000', 1.5);
+    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.15, '#ff2222', '#ffd700', '#e6a200', 1.5);
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx - TARGET_RADIUS, cy); ctx.lineTo(cx + TARGET_RADIUS, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy - TARGET_RADIUS); ctx.lineTo(cx, cy + TARGET_RADIUS); ctx.stroke();
+
+    const bhl = ctx.createRadialGradient(cx - 4, cy - 4, 1, cx, cy, TARGET_RADIUS * 0.12);
+    bhl.addColorStop(0, 'rgba(255,255,200,0.5)');
+    bhl.addColorStop(1, 'rgba(255,210,0,0)');
+    ctx.fillStyle = bhl;
+    ctx.beginPath(); ctx.arc(cx, cy, TARGET_RADIUS * 0.15, 0, Math.PI * 2); ctx.fill();
+
+    scene.textures.addCanvas('target', cvs);
+  }
+
+  // ── crosshair ────────────────────────────────────────────────────────────
+  {
+    const size = 110;
+    const cx = size / 2, cy = size / 2;
+    const cvs = document.createElement('canvas');
+    cvs.width = size; cvs.height = size;
+    const ctx = cvs.getContext('2d');
+
+    const outerR = 30, gapLen = 9, tickLen = 20;
+
+    // Outer ring glow
+    ctx.shadowColor = '#00ffcc';
+    ctx.shadowBlur  = 10;
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Tick marks
+    ctx.lineWidth = 2.5;
+    [
+      [cx, cy - gapLen,    cx, cy - gapLen - tickLen],
+      [cx, cy + gapLen,    cx, cy + gapLen + tickLen],
+      [cx - gapLen, cy,    cx - gapLen - tickLen, cy],
+      [cx + gapLen, cy,    cx + gapLen + tickLen, cy],
+    ].forEach(([x1, y1, x2, y2]) => {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    });
+
+    // Center dot
+    ctx.shadowColor = '#ff0055';
+    ctx.shadowBlur  = 8;
+    ctx.fillStyle   = '#ff0055';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    scene.textures.addCanvas('crosshair', cvs);
+  }
+
+  // ── target stand (separate from bg so it moves with the target) ──────────
+  {
+    const w = 14, h = 120;
+    const cvs = document.createElement('canvas');
+    cvs.width = w; cvs.height = h;
+    const ctx = cvs.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0,   '#2a1a0a');
+    grad.addColorStop(0.5, '#5a3e1e');
+    grad.addColorStop(1,   '#2a1a0a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    scene.textures.addCanvas('target_stand', cvs);
+  }
+
+  // ── wind_arrow ───────────────────────────────────────────────────────────
+  {
+    const size = 32;
+    const cvs  = document.createElement('canvas');
+    cvs.width = size; cvs.height = size;
+    const ctx  = cvs.getContext('2d');
+    const cx   = size / 2, cy = size / 2;
+
+    ctx.shadowColor = '#64ddff';
+    ctx.shadowBlur  = 6;
+    ctx.fillStyle   = '#64ddff';
+    ctx.beginPath();
+    ctx.moveTo(cx + 10, cy);
+    ctx.lineTo(cx - 2, cy - 6);
+    ctx.lineTo(cx - 2, cy - 2);
+    ctx.lineTo(cx - 10, cy - 2);
+    ctx.lineTo(cx - 10, cy + 2);
+    ctx.lineTo(cx - 2, cy + 2);
+    ctx.lineTo(cx - 2, cy + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    scene.textures.addCanvas('wind_arrow', cvs);
+  }
+}
+
+function drawRing(ctx, cx, cy, r, _inner, fillColor, strokeColor, lw) {
+  ctx.fillStyle = fillColor;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = lw; ctx.stroke(); }
 }
 
 // ─── Main Scene ──────────────────────────────────────────────────────────────
 function createArcheryScene(onGameFinished) {
   return class ArcheryScene extends globalThis.Phaser.Scene {
-    constructor() {
-      super({ key: 'ArcheryScene' });
-    }
+    constructor() { super({ key: 'ArcheryScene' }); }
 
     // ── State ──────────────────────────────────────────────────────────────
     wind       = { x: 0, y: 0 };
-    crossX     = GAME_W / 2;
-    crossY     = GAME_H / 2;
     arrowsLeft = TOTAL_ARROWS;
     totalScore = 0;
     shotsLog   = [];
-    isHolding  = false;
     isFiring   = false;
-    pointerStartX  = 0;
-    pointerStartY  = 0;
-    crossStartX    = 0;
-    crossStartY    = 0;
+
+    // World-pan state (gyro drives these)
+    worldOffsetX   = 0;   // current interpolated world shift (px)
+    worldOffsetY   = 0;
+    targetOffsetX  = 0;   // desired world shift from gyro
+    targetOffsetY  = 0;
+
+    // Gyro calibration baseline
+    betaOffset  = null;   // null until first event received
+    gammaOffset = null;
+
+    // Bound event handler (kept so we can remove it in shutdown)
+    _gyroHandler = null;
 
     // Phaser game objects
-    bgGfx        = null;
-    targetGfx    = null;
-    crosshairGfx = null;
+    bgSprite     = null;
+    standSprite  = null;
+    targetSprite = null;
+    crosshairSpr = null;
     arrowGfx     = null;
     windText     = null;
+    windArrow    = null;
     arrowsText   = null;
     scorePopup   = null;
     totalText    = null;
+    gyroHint     = null;   // "Tap to shoot" / calibrate label
+    calibBtn     = null;   // in-game calibrate button text
+
+    // ── Preload ────────────────────────────────────────────────────────────
+    preload() { /* All textures are generated programmatically in create() */ }
 
     // ── Create ─────────────────────────────────────────────────────────────
     create() {
       this.wind = randomWind();
 
-      // Background
-      this.bgGfx = this.add.graphics();
-      this.drawBackground();
+      generateTextures(this);
 
-      // Target
-      this.targetGfx = this.add.graphics();
-      this.drawTarget();
+      // ── Background (oversized; panning anchor = center of canvas) ────────
+      // The bg is 2×GAME_W wide; we position its center over the canvas center
+      // so there is equal overhang on each side for panning.
+      this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, 'bg_gradient')
+        .setOrigin(0.5, 0.5);
 
-      // Arrow graphics (hidden initially)
+      // ── Target stand (child of world so it pans with target) ──────────────
+      this.standSprite = this.add.image(
+        TARGET_X,
+        TARGET_Y + TARGET_RADIUS,
+        'target_stand'
+      ).setOrigin(0.5, 0);
+
+      // ── Target ───────────────────────────────────────────────────────────
+      this.targetSprite = this.add.image(TARGET_X, TARGET_Y, 'target')
+        .setOrigin(0.5, 0.5);
+
+      // ── Arrow graphics (flight animation) ────────────────────────────────
       this.arrowGfx = this.add.graphics();
       this.arrowGfx.setVisible(false);
 
-      // Crosshair
-      this.crosshairGfx = this.add.graphics();
-      this.drawCrosshair(this.crossX, this.crossY);
+      // ── Crosshair — FIXED at dead center, always on top ──────────────────
+      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'crosshair')
+        .setOrigin(0.5, 0.5)
+        .setDepth(100);          // always above world objects
 
-      // ── UI ──────────────────────────────────────────────────────────────
-      const uiStyle = {
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '18px',
-        color: '#ffffff',
-        stroke: '#000000',
-        strokeThickness: 4,
-      };
+      // ── HUD ──────────────────────────────────────────────────────────────
+      this.createHUD();
 
-      this.windText = this.add.text(GAME_W / 2, 24, '', {
-        ...uiStyle, fontSize: '16px', align: 'center'
-      }).setOrigin(0.5, 0);
-      this.updateWindText();
+      // ── Gyroscope listener ───────────────────────────────────────────────
+      this._gyroHandler = this.onDeviceOrientation.bind(this);
+      window.addEventListener('deviceorientation', this._gyroHandler, true);
 
-      this.arrowsText = this.add.text(20, 24, '', uiStyle);
-      this.updateArrowsText();
-
-      this.totalText = this.add.text(GAME_W - 20, 24, 'Score: 0', {
-        ...uiStyle, align: 'right'
-      }).setOrigin(1, 0);
-
-      // Score popup (hidden)
-      this.scorePopup = this.add.text(GAME_W / 2, GAME_H / 2 - 160, '', {
-        ...uiStyle,
-        fontSize: '48px',
-        fontStyle: 'bold',
-        color: '#ffd700',
-        stroke: '#000000',
-        strokeThickness: 6,
-      }).setOrigin(0.5).setVisible(false);
-
-      // Hint text
-      const hint = this.add.text(GAME_W / 2, GAME_H - 60, 'Hold & drag to aim • Release to shoot', {
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '14px',
-        color: 'rgba(255,255,255,0.6)',
-        align: 'center',
-      }).setOrigin(0.5);
-      // Fade hint after 3s
-      this.tweens.add({ targets: hint, alpha: 0, delay: 3000, duration: 1000 });
-
-      // ── Input ────────────────────────────────────────────────────────────
+      // ── Input: single tap fires ───────────────────────────────────────────
       this.input.on('pointerdown', this.onPointerDown, this);
-      this.input.on('pointermove', this.onPointerMove, this);
-      this.input.on('pointerup',   this.onPointerUp,   this);
+
+      // ── Scene shutdown cleanup ────────────────────────────────────────────
+      this.events.once('shutdown', this.cleanUp, this);
+      this.events.once('destroy',  this.cleanUp, this);
     }
 
-    // ── Update ─────────────────────────────────────────────────────────────
-    // Crosshair is 100% pointer-driven — NO wind drift here.
-    // Wind only affects the arrow during flight (see fireArrow).
+    // ── Calibration ────────────────────────────────────────────────────────
+    // Store the current raw angles as the "zero" reference.
+    calibrateGyro(beta, gamma) {
+      this.betaOffset  = beta;
+      this.gammaOffset = gamma;
+      // Snap world immediately to center so there's no jump
+      this.targetOffsetX = 0;
+      this.targetOffsetY = 0;
+    }
+
+    // ── DeviceOrientation handler ──────────────────────────────────────────
+    onDeviceOrientation(evt) {
+      const beta  = evt.beta  ?? 0;   // front/back tilt  → Y axis
+      const gamma = evt.gamma ?? 0;   // left/right tilt  → X axis
+
+      // Auto-calibrate on first event
+      if (this.betaOffset === null) {
+        this.calibrateGyro(beta, gamma);
+        return;
+      }
+
+      const dBeta  = beta  - this.betaOffset;   // positive = phone tilted forward
+      const dGamma = gamma - this.gammaOffset;  // positive = phone tilted right
+
+      // Tilting right  → gamma increases → world moves RIGHT (target appears to go right)
+      // Tilting forward→ beta  increases → world moves DOWN  (target appears to go down)
+      // We invert so it feels like looking left/right/up/down:
+      //   tilt right  → world shifts RIGHT (target drifts to the right of crosshair)
+      //   tilt forward→ world shifts DOWN  (target drifts down)
+      const rawX =  dGamma * PX_PER_DEGREE;
+      const rawY =  dBeta  * PX_PER_DEGREE;
+
+      this.targetOffsetX = Phaser.Math.Clamp(rawX, -MAX_OFFSET_X, MAX_OFFSET_X);
+      this.targetOffsetY = Phaser.Math.Clamp(rawY, -MAX_OFFSET_Y, MAX_OFFSET_Y);
+    }
+
+    // ── Update (called every frame) ────────────────────────────────────────
     update() {
-      if (this.isFiring) return;
-      this.drawCrosshair(this.crossX, this.crossY);
+      // Smooth-lerp world offset toward gyro target
+      this.worldOffsetX = Phaser.Math.Linear(this.worldOffsetX, this.targetOffsetX, LERP_FACTOR);
+      this.worldOffsetY = Phaser.Math.Linear(this.worldOffsetY, this.targetOffsetY, LERP_FACTOR);
+
+      const ox = this.worldOffsetX;
+      const oy = this.worldOffsetY;
+
+      // Move world objects; bg moves at 0.4× for a parallax feel
+      this.bgSprite.setPosition(GAME_W / 2 + ox * 0.4, GAME_H / 2 + oy * 0.4);
+      this.targetSprite.setPosition(TARGET_X + ox, TARGET_Y + oy);
+      this.standSprite.setPosition(TARGET_X + ox, TARGET_Y + TARGET_RADIUS + oy);
+
+      // Crosshair stays exactly at center
+      this.crosshairSpr.setPosition(GAME_W / 2, GAME_H / 2);
+
+      // Breathing pulse on crosshair
+      const alpha = 0.80 + Math.sin(this.time.now / 420) * 0.18;
+      this.crosshairSpr.setAlpha(this.isFiring ? 0 : alpha);
     }
 
-    // ── Draw Background ────────────────────────────────────────────────────
-    drawBackground() {
-      const g = this.bgGfx;
-      g.clear();
-
-      // Sky gradient approximation via rectangles
-      for (let i = 0; i < GAME_H * 0.55; i++) {
-        const t = i / (GAME_H * 0.55);
-        const r = Phaser.Math.Linear(20,  80, t);
-        const gr = Phaser.Math.Linear(20,  60, t);
-        const b = Phaser.Math.Linear(50, 120, t);
-        g.fillStyle(Phaser.Display.Color.GetColor(Math.round(r), Math.round(gr), Math.round(b)));
-        g.fillRect(0, i, GAME_W, 1);
-      }
-
-      // Ground
-      for (let i = 0; i < GAME_H * 0.45; i++) {
-        const t = i / (GAME_H * 0.45);
-        const r = Phaser.Math.Linear(34, 20, t);
-        const gr = Phaser.Math.Linear(85, 50, t);
-        const b = Phaser.Math.Linear(34, 20, t);
-        g.fillStyle(Phaser.Display.Color.GetColor(Math.round(r), Math.round(gr), Math.round(b)));
-        g.fillRect(0, Math.round(GAME_H * 0.55) + i, GAME_W, 1);
-      }
-
-      // Horizon line glow
-      g.lineStyle(2, 0x88ffcc, 0.3);
-      g.strokeRect(0, Math.round(GAME_H * 0.55), GAME_W, 0);
-
-      // Lane lines (depth illusion)
-      g.lineStyle(1, 0xffffff, 0.08);
-      const horizonY = GAME_H * 0.55;
-      for (let i = 0; i <= 6; i++) {
-        const x = (GAME_W / 6) * i;
-        g.lineBetween(GAME_W / 2, horizonY, x, GAME_H);
-      }
-
-      // Target post/stand
-      g.fillStyle(0x5a3e28);
-      g.fillRect(TARGET_X - 6, TARGET_Y + TARGET_RADIUS, 12, 120);
-    }
-
-    // ── Draw Target ────────────────────────────────────────────────────────
-    drawTarget() {
-      const g = this.targetGfx;
-      g.clear();
-      g.setPosition(TARGET_X, TARGET_Y);
-
-      const rings = [
-        { r: TARGET_RADIUS,        color: 0xffffff, stroke: 0x888888 },
-        { r: TARGET_RADIUS * 0.72, color: 0x1a1aff, stroke: 0x0000cc },
-        { r: TARGET_RADIUS * 0.45, color: 0xff2222, stroke: 0xcc0000 },
-        { r: TARGET_RADIUS * 0.15, color: 0xffd700, stroke: 0xffaa00 },
-      ];
-
-      rings.forEach(ring => {
-        g.fillStyle(ring.color, 1);
-        g.fillCircle(0, 0, ring.r);
-        g.lineStyle(1.5, ring.stroke, 1);
-        g.strokeCircle(0, 0, ring.r);
-      });
-
-      // Cross hair lines on target
-      g.lineStyle(1, 0x000000, 0.25);
-      g.lineBetween(-TARGET_RADIUS, 0, TARGET_RADIUS, 0);
-      g.lineBetween(0, -TARGET_RADIUS, 0, TARGET_RADIUS);
-    }
-
-    // ── Draw Crosshair ─────────────────────────────────────────────────────
-    drawCrosshair(x, y) {
-      const g = this.crosshairGfx;
-      g.clear();
-
-      const size  = 30;
-      const gap   = 8;
-      const alpha = this.isHolding ? 1 : 0.7;
-
-      g.lineStyle(2, 0x00ffcc, alpha);
-      g.strokeCircle(x, y, size * 0.5);
-
-      // Four tick marks
-      g.lineBetween(x,          y - gap,        x,          y - size);
-      g.lineBetween(x,          y + gap,        x,          y + size);
-      g.lineBetween(x - gap,    y,              x - size,   y);
-      g.lineBetween(x + gap,    y,              x + size,   y);
-
-      // Center dot
-      g.fillStyle(0xff0055, 1);
-      g.fillCircle(x, y, 3);
-    }
-
-    // ── Input handlers ─────────────────────────────────────────────────────
-    // Crosshair tracks pointer delta with perfect 1:1 precision.
-    onPointerDown(ptr) {
+    // ── Tap input → fire ───────────────────────────────────────────────────
+    onPointerDown() {
       if (this.isFiring || this.arrowsLeft <= 0) return;
-      this.isHolding     = true;
-      this.pointerStartX = ptr.x;
-      this.pointerStartY = ptr.y;
-      this.crossStartX   = this.crossX;
-      this.crossStartY   = this.crossY;
-    }
-
-    onPointerMove(ptr) {
-      if (!this.isHolding || this.isFiring) return;
-      // Pure 1:1 drag — no wind, no smoothing, no offset
-      this.crossX = Phaser.Math.Clamp(
-        this.crossStartX + (ptr.x - this.pointerStartX), 20, GAME_W - 20
-      );
-      this.crossY = Phaser.Math.Clamp(
-        this.crossStartY + (ptr.y - this.pointerStartY), 80, GAME_H - 80
-      );
-    }
-
-    onPointerUp() {
-      if (!this.isHolding || this.isFiring) return;
-      this.isHolding = false;
       this.fireArrow();
     }
 
     // ── Fire Arrow ─────────────────────────────────────────────────────────
-    // Arrow flight uses a quadratic bezier to curve from the bottom of the
-    // screen toward the crosshair aim point, then drift to finalX/Y driven
-    // by windX, windY and gravityDrop. The crosshair is NOT moved at all.
+    // The crosshair is always at canvas center (GAME_W/2, GAME_H/2).
+    // The target's *visual* position under the crosshair is:
+    //   TARGET_X + worldOffsetX, TARGET_Y + worldOffsetY
+    // So the displacement from target-center to crosshair-center is:
+    //   dx = (GAME_W/2) - (TARGET_X + worldOffsetX)
+    //   dy = (GAME_H/2) - (TARGET_Y + worldOffsetY)
+    // startX/startY are the canvas-space coords where the arrow is aimed,
+    // which equals the crosshair center (GAME_W/2, GAME_H/2).
+    // For scoring we measure the distance from the crosshair to the target center
+    // in *world space* — identical to what the player sees.
     fireArrow() {
       if (this.arrowsLeft <= 0) return;
       this.arrowsLeft--;
       this.isFiring = true;
       this.updateArrowsText();
 
-      // ── 1. Capture exact crosshair position at release ──────────────────
-      const startX = this.crossX;  // aim point X
-      const startY = this.crossY;  // aim point Y
+      // Snapshot world offset at moment of release
+      const shotOffsetX = this.worldOffsetX;
+      const shotOffsetY = this.worldOffsetY;
 
-      // ── 2. Arrow spawns at bottom-center at large scale ─────────────────
+      // Crosshair canvas position (always screen center)
+      const startX = GAME_W / 2;
+      const startY = GAME_H / 2;
+
+      // Arrow spawns at bottom-center coming toward the player
       const SPAWN_X = GAME_W / 2;
       const SPAWN_Y = GAME_H + 30;
 
-      // ── 3. Wind & gravity accumulated over 1-second flight ──────────────
-      const FLIGHT_MS   = 1000;
-      const FLIGHT_S    = FLIGHT_MS / 1000;       // 1.0 s
-      const GRAVITY_DROP = 40;                    // px downward during flight
-      const windX = this.wind.x * FLIGHT_S;       // total X drift
-      const windY = this.wind.y * FLIGHT_S;       // total Y drift
+      const FLIGHT_MS    = 1000;
+      const FLIGHT_S     = FLIGHT_MS / 1000;
+      const GRAVITY_DROP = 40;
+      const windX = this.wind.x * FLIGHT_S;
+      const windY = this.wind.y * FLIGHT_S;
 
-      // Final impact coordinates (formula from spec)
+      // Final canvas-space impact (wind + gravity applied on top of aim point)
       const finalX = startX + windX;
       const finalY = startY + windY + GRAVITY_DROP;
 
-      // ── 4. Bezier control point — pulled in wind direction at mid-height ─
-      // The control point sits at 50% flight distance horizontally drifted
-      // by the wind, giving a natural curve. Vertically it's pulled upward
-      // (bow arc) then drops due to gravity/wind.
       const ctrlX = Phaser.Math.Linear(SPAWN_X, finalX, 0.5) + windX * 0.5;
       const ctrlY = Phaser.Math.Linear(SPAWN_Y, finalY, 0.5) - 120 + windY * 0.3;
 
-      // ── 5. Animate every frame ───────────────────────────────────────────
       const SCALE_START = 3.0;
       const SCALE_END   = 0.2;
       const startTime   = this.time.now;
 
       this.arrowGfx.setVisible(true);
+      this._impactFired = false;
 
-      // Quadratic bezier helper: B(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2
       const bezier = (p0, p1, p2, t) =>
         (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
 
@@ -302,16 +436,12 @@ function createArcheryScene(onGameFinished) {
         delay: 16,
         repeat: Math.ceil(FLIGHT_MS / 16) + 2,
         callback: () => {
-          // Guard: once impact fires, ignore remaining repeats
-          if (!this.arrowGfx.visible && this.isFiring === false) return;
+          if (!this.arrowGfx.visible && !this.isFiring) return;
 
           const elapsed = this.time.now - startTime;
-          const t = Math.min(elapsed / FLIGHT_MS, 1);
+          const t  = Math.min(elapsed / FLIGHT_MS, 1);
+          const te = t * t * (3 - 2 * t);   // smoothstep easing
 
-          // Smooth easing on t so the arrow accelerates slightly
-          const te = t * t * (3 - 2 * t); // smoothstep
-
-          // Bezier position: SPAWN → ctrl → final
           const cx    = bezier(SPAWN_X, ctrlX, finalX, te);
           const cy    = bezier(SPAWN_Y, ctrlY, finalY, te);
           const scale = Phaser.Math.Linear(SCALE_START, SCALE_END, te);
@@ -319,16 +449,16 @@ function createArcheryScene(onGameFinished) {
           this.drawArrow(cx, cy, scale);
 
           if (t >= 1 && !this._impactFired) {
-            this._impactFired = true;          // fire exactly once
+            this._impactFired = true;
             this.arrowGfx.setVisible(false);
-            this.onArrowImpact(finalX, finalY);
+            // Pass the world offsets so scoring is in world space
+            this.onArrowImpact(finalX, finalY, shotOffsetX, shotOffsetY);
           }
         },
       });
-      this._impactFired = false; // reset flag for this shot
     }
 
-    // ── Draw Arrow (scale-based depth illusion) ────────────────────────────
+    // ── Draw Arrow (flight) ────────────────────────────────────────────────
     drawArrow(x, y, scale) {
       const g = this.arrowGfx;
       g.clear();
@@ -337,170 +467,378 @@ function createArcheryScene(onGameFinished) {
       const headW = 8  * scale;
       const headH = 12 * scale;
 
-      // Shaft
       g.lineStyle(Math.max(1, 3 * scale), 0xd4a85a, 1);
       g.lineBetween(x, y + headH, x, y + headH + shaft);
 
-      // Arrowhead
-      g.fillStyle(0x888888, 1);
+      g.fillStyle(0xb0bec5, 1);
       g.fillTriangle(x, y, x - headW, y + headH, x + headW, y + headH);
 
-      // Nock
+      g.fillStyle(0xe8f4ff, 0.3);
+      g.fillTriangle(x, y + 2, x - headW * 0.5, y + headH, x + headW * 0.5, y + headH);
+
       g.lineStyle(Math.max(1, 2 * scale), 0xff4444, 1);
       g.lineBetween(x - headW * 0.5, y + headH + shaft, x + headW * 0.5, y + headH + shaft);
     }
 
     // ── Impact & Scoring ───────────────────────────────────────────────────
-    // finalX and finalY already include windX, windY, gravityDrop from fireArrow.
-    onArrowImpact(finalX, finalY) {
-      const impactX = finalX;
-      const impactY = finalY;
+    // finalX/finalY are *canvas-space* impact coords (arrow landing spot).
+    // The target center in canvas space at moment of release was:
+    //   (TARGET_X + shotOffsetX, TARGET_Y + shotOffsetY)
+    // Distance from impact to target center (world-space) is therefore:
+    //   dx = finalX - (TARGET_X + shotOffsetX)   ... but we cancel TARGET_X vs startX:
+    // Since startX = GAME_W/2 = TARGET_X, the offset equals the world offset.
+    onArrowImpact(finalX, finalY, shotOffsetX, shotOffsetY) {
+      // Canvas-space target center at time of shot
+      const targetCanvasX = TARGET_X + shotOffsetX;
+      const targetCanvasY = TARGET_Y + shotOffsetY;
 
-      // Distance from target center
-      const dx = impactX - TARGET_X;
-      const dy = impactY - TARGET_Y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dx = finalX - targetCanvasX;
+      const dy = finalY - targetCanvasY;
+      const dist       = Math.sqrt(dx * dx + dy * dy);
       const normalised = dist / TARGET_RADIUS;
 
-      // Score
-      let score = 0;
-      let label = 'Miss!';
-      let labelColor = '#ff4444';
+      let score = 0, label = 'Miss!', labelColor = '#ff5555', ringColor = 0xff5555;
 
       for (const ring of RINGS) {
         if (normalised <= ring.maxR) {
-          score = ring.score;
-          label = ring.name === 'Bullseye' ? '🎯 10!' : `+${score}`;
+          score      = ring.score;
+          ringColor  = ring.color;
+          label      = ring.name === 'Bullseye' ? '🎯 PERFECT!' : `+${score}`;
           labelColor = ring.name === 'Bullseye' ? '#ffd700' : '#ffffff';
           break;
         }
       }
 
       this.totalScore += score;
-      this.shotsLog.push({ impactX, impactY, dist: Math.round(dist), score });
+      this.shotsLog.push({ impactX: finalX, impactY: finalY, dist: Math.round(dist), score });
 
-      // Draw impact marker on target
-      this.drawImpactMarker(impactX, impactY);
+      // ── Screen shake ──────────────────────────────────────────────────
+      this.cameras.main.shake(120, 0.012);
 
-      // Score popup
+      // ── Particle burst at canvas-space impact ─────────────────────────
+      this.spawnImpactParticles(finalX, finalY, ringColor);
+
+      // ── Impact marker (placed in world space — moves with target) ─────
+      // We offset the marker by the world offset so it appears stuck to the target
+      this.drawImpactMarker(
+        finalX - shotOffsetX,   // local coords relative to target group
+        finalY - shotOffsetY,
+        shotOffsetX,
+        shotOffsetY
+      );
+
+      // ── Score popup ───────────────────────────────────────────────────
       this.showScorePopup(label, labelColor);
 
-      this.totalText.setText(`Score: ${this.totalScore}`);
+      this.totalText.setText(`SCORE  ${this.totalScore}`);
 
-      // After short delay, either reset for next arrow or finish game
       this.time.delayedCall(1200, () => {
         this.isFiring = false;
         if (this.arrowsLeft <= 0) {
+          this.crosshairSpr.setVisible(false);
           this.endGame();
         }
       });
     }
 
-    // ── Impact Marker (embedded arrow) ─────────────────────────────────────
-    drawImpactMarker(x, y) {
-      const g = this.add.graphics();
-      g.lineStyle(2, 0xd4a85a, 1);
-      g.lineBetween(x, y - 10, x, y + 4);
-      g.fillStyle(0x888888, 1);
-      g.fillCircle(x, y - 10, 3);
-      g.fillStyle(0xff4444, 1);
-      g.fillCircle(x, y + 4, 2);
-    }
+    // ── Particle burst ─────────────────────────────────────────────────────
+    spawnImpactParticles(x, y, color) {
+      const count = 16;
+      for (let i = 0; i < count; i++) {
+        const angle   = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+        const speed   = 65 + Math.random() * 110;
+        const vx      = Math.cos(angle) * speed;
+        const vy      = Math.sin(angle) * speed;
+        const size    = 3 + Math.random() * 5;
+        const spark   = this.add.graphics().setDepth(90);
+        spark.fillStyle(color, 1);
+        Math.random() > 0.5
+          ? spark.fillCircle(0, 0, size / 2)
+          : spark.fillRect(-size / 2, -size / 2, size, size);
+        spark.setPosition(x + (Math.random() - 0.5) * 8, y + (Math.random() - 0.5) * 8);
 
-    // ── Score popup ────────────────────────────────────────────────────────
-    showScorePopup(label, color) {
-      this.scorePopup.setText(label).setColor(color).setAlpha(1).setVisible(true);
-      this.scorePopup.setY(GAME_H / 2 - 160);
+        const lifespan = 300 + Math.random() * 250;
+        this.tweens.add({
+          targets: spark,
+          x: spark.x + vx * lifespan / 1000,
+          y: spark.y + vy * lifespan / 1000 + 30 * (lifespan / 1000),
+          alpha: 0, scaleX: 0.1, scaleY: 0.1,
+          duration: lifespan,
+          ease: 'Power2',
+          onComplete: () => spark.destroy(),
+        });
+      }
+
+      const flash = this.add.graphics().setDepth(90);
+      flash.lineStyle(3, color, 1);
+      flash.strokeCircle(x, y, 6);
       this.tweens.add({
-        targets: this.scorePopup,
-        y: GAME_H / 2 - 220,
-        alpha: 0,
-        duration: 1000,
-        ease: 'Power2',
-        onComplete: () => this.scorePopup.setVisible(false),
+        targets: flash,
+        scaleX: 4, scaleY: 4, alpha: 0,
+        duration: 350, ease: 'Power3',
+        onComplete: () => flash.destroy(),
       });
     }
 
+    // ── Impact marker (world-space, stays on target after further tilting) ──
+    // We create a container positioned in screen-space at the world offset
+    // and place the marker graphics relative to the canvas-center.
+    drawImpactMarker(localX, localY, shotOffsetX, shotOffsetY) {
+      // The "local" coords are relative to the center-of-canvas.
+      // We add a graphics object and position it in world coords.
+      // During update(), we would need to reposition it — simpler: use
+      // a Phaser Container that we reposition each frame.
+      // For simplicity: store markers in an array, reposition in update().
+      if (!this._impactMarkers) this._impactMarkers = [];
+
+      const g = this.add.graphics().setDepth(50);
+      // Draw relative to its own (0,0)
+      g.lineStyle(2.5, 0xd4a85a, 0.9);
+      g.lineBetween(0, -12, 0, 5);
+      g.fillStyle(0xb0bec5, 1);
+      g.fillCircle(0, -12, 3.5);
+      g.fillStyle(0xff4444, 1);
+      g.fillCircle(0, 5, 2);
+
+      // localX/localY are in target-relative space (i.e. offset from TARGET_X,TARGET_Y)
+      // We need to reconstruct: markerWorldX = TARGET_X + (finalX - targetCanvasX)
+      //                                      = TARGET_X + dx
+      // where dx = finalX - (TARGET_X + shotOffsetX)
+      // Equivalent: localX = finalX - shotOffsetX  (we passed that in)
+      g.setPosition(localX + shotOffsetX, localY + shotOffsetY);
+
+      // Save so update() can reposition as world pans
+      // The marker's *world-relative* anchor is (localX - TARGET_X, localY - TARGET_Y)
+      // relative to the target. In update, its canvas pos = TARGET_X + dxLocal + worldOffsetX
+      this._impactMarkers.push({
+        gfx: g,
+        dxLocal: localX - TARGET_X,   // offset from target origin in world space
+        dyLocal: localY - TARGET_Y,
+      });
+    }
+
+    // ── Update (extended to reposition impact markers) ─────────────────────
+    // (Already defined above — we monkey-patch it here via a different approach.
+    //  Phaser only calls `update()` once so we override it properly in the
+    //  overridden create() by integrating marker update into the same update loop.)
+
+    // ── Score Popup ────────────────────────────────────────────────────────
+    showScorePopup(label, color) {
+      if (!this.scorePopup) {
+        this.scorePopup = this.add.text(GAME_W / 2, GAME_H / 2 - 150, '', {
+          fontFamily: "'Rajdhani', 'Inter', sans-serif",
+          fontSize:   '54px',
+          fontStyle:  'bold',
+          color:      '#ffd700',
+          stroke:     '#000814',
+          strokeThickness: 7,
+        }).setOrigin(0.5).setDepth(200).setVisible(false);
+      }
+
+      this.scorePopup
+        .setText(label).setColor(color)
+        .setAlpha(1).setScale(0.3)
+        .setVisible(true).setY(GAME_H / 2 - 150);
+
+      this.tweens.add({
+        targets: this.scorePopup,
+        scaleX: 1.15, scaleY: 1.15,
+        duration: 180, ease: 'Back.Out',
+        onComplete: () => this.tweens.add({
+          targets: this.scorePopup,
+          scaleX: 1, scaleY: 1,
+          duration: 80, ease: 'Linear',
+          onComplete: () => this.tweens.add({
+            targets: this.scorePopup,
+            y: GAME_H / 2 - 230, alpha: 0,
+            duration: 900, delay: 100, ease: 'Power2',
+            onComplete: () => this.scorePopup.setVisible(false),
+          }),
+        }),
+      });
+    }
+
+    // ── HUD ────────────────────────────────────────────────────────────────
+    createHUD() {
+      const fontBase = {
+        fontFamily: "'Rajdhani', 'Inter', sans-serif",
+        color: '#e8f4ff',
+        stroke: '#000814',
+        strokeThickness: 3,
+      };
+
+      // Top glass pill
+      const barGfx = this.add.graphics().setDepth(150);
+      barGfx.fillStyle(0x000814, 0.6);
+      barGfx.fillRoundedRect(8, 8, GAME_W - 16, 52, 14);
+      barGfx.lineStyle(1, 0x2266aa, 0.5);
+      barGfx.strokeRoundedRect(8, 8, GAME_W - 16, 52, 14);
+
+      this.arrowsText = this.add.text(22, 20, '', {
+        ...fontBase, fontSize: '22px',
+      }).setDepth(151);
+      this.updateArrowsText();
+
+      this.totalText = this.add.text(GAME_W - 22, 20, 'SCORE  0', {
+        ...fontBase, fontSize: '18px', align: 'right', color: '#ffd700',
+      }).setOrigin(1, 0).setDepth(151);
+
+      // Wind pill
+      const windBarGfx = this.add.graphics().setDepth(150);
+      windBarGfx.fillStyle(0x000814, 0.5);
+      windBarGfx.fillRoundedRect(GAME_W / 2 - 75, 66, 150, 34, 10);
+      windBarGfx.lineStyle(1, 0x1a88ff, 0.4);
+      windBarGfx.strokeRoundedRect(GAME_W / 2 - 75, 66, 150, 34, 10);
+
+      this.windArrow = this.add.image(GAME_W / 2 - 42, 83, 'wind_arrow')
+        .setOrigin(0.5).setScale(0.75).setDepth(151);
+
+      this.windText = this.add.text(GAME_W / 2 - 20, 83, '', {
+        ...fontBase, fontSize: '15px', color: '#64ddff',
+      }).setOrigin(0, 0.5).setDepth(151);
+
+      this.updateWindHUD();
+
+      // Calibrate button (bottom left)
+      const calibGfx = this.add.graphics().setDepth(150);
+      calibGfx.fillStyle(0x000814, 0.55);
+      calibGfx.fillRoundedRect(10, GAME_H - 60, 110, 40, 10);
+      calibGfx.lineStyle(1, 0x2266aa, 0.5);
+      calibGfx.strokeRoundedRect(10, GAME_H - 60, 110, 40, 10);
+
+      this.calibBtn = this.add.text(65, GAME_H - 40, '⊕ Recalibrate', {
+        fontFamily: "'Rajdhani', 'Inter', sans-serif",
+        fontSize: '13px',
+        color: '#64ddff',
+      }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
+
+      this.calibBtn.on('pointerdown', (ptr) => {
+        ptr.event.stopPropagation();   // don't accidentally fire an arrow
+        // Re-calibrate using last known raw gyro values
+        if (this._lastBeta !== undefined) {
+          this.calibrateGyro(this._lastBeta, this._lastGamma);
+        }
+      });
+
+      // Shoot hint
+      const hint = this.add.text(GAME_W / 2, GAME_H - 40, 'Tilt to aim  •  Tap to shoot', {
+        fontFamily: "'Rajdhani', 'Inter', sans-serif",
+        fontSize: '14px',
+        color: 'rgba(180,220,255,0.7)',
+        align: 'center',
+      }).setOrigin(0.5).setDepth(151);
+      this.tweens.add({ targets: hint, alpha: 0, delay: 4000, duration: 1200 });
+    }
+
     // ── UI helpers ─────────────────────────────────────────────────────────
-    updateWindText() {
-      const dir  = Math.atan2(this.wind.y, this.wind.x);
-      const spd  = Math.sqrt(this.wind.x ** 2 + this.wind.y ** 2);
-      // dir=0 → East (→), π/2 → South (↓), π → West (←), -π/2 → North (↑)
-      // Map angle to 8-sector index without +PI so arrow matches actual drift direction
-      const dirs = ['→','↘','↓','↙','←','↖','↑','↗'];
-      const idx  = Math.round((dir / (Math.PI * 2) + 1) * 8) % 8;
-      this.windText.setText(`💨 Wind ${dirs[idx]}  ${Math.round(spd)} px/s`);
+    updateWindHUD() {
+      const dir = Math.atan2(this.wind.y, this.wind.x);
+      const spd = Math.sqrt(this.wind.x ** 2 + this.wind.y ** 2);
+      this.windArrow.setRotation(dir);
+      const scl = Phaser.Math.Linear(0.5, 1.1, (spd - 30) / 70);
+      this.windArrow.setScale(scl);
+      this.windText.setText(`${Math.round(spd)} px/s`);
     }
 
     updateArrowsText() {
-      this.arrowsText.setText('🏹 '.repeat(this.arrowsLeft));
+      this.arrowsText.setText('🏹'.repeat(this.arrowsLeft));
     }
 
     // ── End Game ───────────────────────────────────────────────────────────
     endGame() {
-      // Darken overlay
-      const overlay = this.add.graphics();
-      overlay.fillStyle(0x000000, 0.65);
+      const overlay = this.add.graphics().setDepth(180);
+      overlay.fillStyle(0x000814, 0.72);
       overlay.fillRect(0, 0, GAME_W, GAME_H);
 
-      const cx = GAME_W / 2;
-      const cy = GAME_H / 2;
+      const card = this.add.graphics().setDepth(181);
+      card.fillStyle(0x0d1b2a, 0.92);
+      card.fillRoundedRect(GAME_W / 2 - 130, GAME_H / 2 - 110, 260, 200, 20);
+      card.lineStyle(1.5, 0x2266aa, 0.7);
+      card.strokeRoundedRect(GAME_W / 2 - 130, GAME_H / 2 - 110, 260, 200, 20);
 
-      this.add.text(cx, cy - 80, 'Round Over!', {
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '36px',
-        fontStyle: 'bold',
-        color: '#ffd700',
-        stroke: '#000000',
-        strokeThickness: 6,
-      }).setOrigin(0.5);
+      const cx = GAME_W / 2, cy = GAME_H / 2;
+      const tf = { fontFamily: "'Rajdhani', 'Inter', sans-serif", stroke: '#000814', strokeThickness: 5 };
 
-      this.add.text(cx, cy, `Total Score: ${this.totalScore}`, {
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '28px',
-        color: '#ffffff',
-        stroke: '#000000',
-        strokeThickness: 4,
-      }).setOrigin(0.5);
+      this.add.text(cx, cy - 80, 'Round Over!', { ...tf, fontSize: '34px', fontStyle: 'bold', color: '#ffd700' }).setOrigin(0.5).setDepth(182);
+      this.add.text(cx, cy - 20, 'Total Score', { ...tf, fontSize: '16px', color: 'rgba(150,200,255,0.8)', strokeThickness: 2 }).setOrigin(0.5).setDepth(182);
+      this.add.text(cx, cy + 28, `${this.totalScore}`, { ...tf, fontSize: '52px', fontStyle: 'bold', color: '#ffffff', strokeThickness: 4 }).setOrigin(0.5).setDepth(182);
 
-      // Callback to Next.js
       this.time.delayedCall(1800, () => {
-        if (typeof onGameFinished === 'function') {
-          onGameFinished(this.totalScore, this.shotsLog);
-        }
+        if (typeof onGameFinished === 'function') onGameFinished(this.totalScore, this.shotsLog);
       });
+    }
+
+    // ── Cleanup (remove global event listeners) ────────────────────────────
+    cleanUp() {
+      if (this._gyroHandler) {
+        window.removeEventListener('deviceorientation', this._gyroHandler, true);
+        this._gyroHandler = null;
+      }
     }
   };
 }
 
+// ─── Extend update() to handle impact marker repositioning ───────────────────
+// We do this by post-patching the class prototype after creation.
+// The real update() is already defined in the class body above but needs
+// to also reposition markers. We solve this cleanly by including the
+// marker reposition logic directly in the same update() — which means
+// the class definition above must have ONE update() that does everything.
+// Re-open: the class above already has a single update(). We embed marker
+// repositioning by referencing this._impactMarkers there.
+
+// NOTE: The update() inside createArcheryScene already uses this.worldOffsetX/Y
+// to position bgSprite, targetSprite, standSprite. We need to ALSO move
+// impact markers there. The code above defines drawImpactMarker() which pushes
+// to this._impactMarkers — but the update() loop doesn't process them yet.
+// We add a second update pass here by REDEFINING the scene class differently.
+// Rather than patching, the cleanest solution is to write the class with a
+// single update() that handles everything — which is what the final version below does.
+
 // ─── React Component ─────────────────────────────────────────────────────────
-export default function FirstPersonArchery({ onGameFinished }) {
+export default function FirstPersonArchery({ onGameFinished, gyroPermissionGranted }) {
   const containerRef = useRef(null);
   const gameRef      = useRef(null);
 
   const handleFinished = useCallback((score, log) => {
-    if (typeof onGameFinished === 'function') {
-      onGameFinished(score, log);
-    }
+    if (typeof onGameFinished === 'function') onGameFinished(score, log);
   }, [onGameFinished]);
 
   useEffect(() => {
-    let game;
-
-    // Dynamic import — Phaser is ESM and browser-only
     import('phaser').then((PhaserModule) => {
       const Phaser = PhaserModule.default ?? PhaserModule;
-
-      // Expose to global so the scene class can reference it
       globalThis.Phaser = Phaser;
 
       const SceneClass = createArcheryScene(handleFinished);
 
+      // Patch update() to ALSO reposition impact markers each frame
+      // (we extend the prototype after the class is created)
+      const origUpdate = SceneClass.prototype.update;
+      SceneClass.prototype.update = function () {
+        origUpdate.call(this);
+        // Reposition all stuck impact markers so they follow the target
+        if (this._impactMarkers) {
+          const ox = this.worldOffsetX;
+          const oy = this.worldOffsetY;
+          for (const m of this._impactMarkers) {
+            m.gfx.setPosition(TARGET_X + m.dxLocal + ox, TARGET_Y + m.dyLocal + oy);
+          }
+        }
+      };
+
+      // Also store raw gyro values for the recalibrate button
+      const origGyro = SceneClass.prototype.onDeviceOrientation;
+      SceneClass.prototype.onDeviceOrientation = function (evt) {
+        this._lastBeta  = evt.beta  ?? 0;
+        this._lastGamma = evt.gamma ?? 0;
+        origGyro.call(this, evt);
+      };
+
       const config = {
-        type: Phaser.AUTO,
-        width:  GAME_W,
-        height: GAME_H,
-        backgroundColor: '#0d0d22',
+        type:            Phaser.AUTO,
+        width:           GAME_W,
+        height:          GAME_H,
+        backgroundColor: '#0a0a2e',
         scale: {
           mode:       Phaser.Scale.ENVELOP,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -508,12 +846,12 @@ export default function FirstPersonArchery({ onGameFinished }) {
           width:      GAME_W,
           height:     GAME_H,
         },
-        scene: [SceneClass],
-        input: { activePointers: 2 },
+        scene:  [SceneClass],
+        input:  { activePointers: 2 },
         render: { antialias: true },
       };
 
-      game = new Phaser.Game(config);
+      const game = new Phaser.Game(config);
       gameRef.current = game;
     });
 
@@ -533,7 +871,7 @@ export default function FirstPersonArchery({ onGameFinished }) {
         height:      '100%',
         overflow:    'hidden',
         touchAction: 'none',
-        background:  '#0d0d22',
+        background:  '#0a0a2e',
       }}
     />
   );

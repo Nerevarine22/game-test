@@ -1,4 +1,4 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Rajdhani } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -11,9 +11,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const rajdhani = Rajdhani({
+  variable: "--font-rajdhani",
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  display: "swap",
+});
+
 export const metadata = {
-  title: "Game",
-  description: "Mobile first game experience",
+  title: "Archery — First Person Wind Challenge",
+  description: "A first-person archery game with wind physics. 3 arrows, aim true!",
 };
 
 export const viewport = {
@@ -26,7 +33,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={`${geistSans.variable} ${rajdhani.variable}`}>{children}</body>
     </html>
   );
 }
