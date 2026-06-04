@@ -868,7 +868,7 @@ export default function FirstPersonArchery({ onGameFinished, gyroPermissionGrant
         height:          GAME_H,
         backgroundColor: '#0a0a2e',
         scale: {
-          mode:       Phaser.Scale.ENVELOP,
+          mode:       Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           parent:     containerRef.current,
           width:      GAME_W,

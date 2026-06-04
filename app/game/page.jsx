@@ -140,15 +140,19 @@ export default function GamePage() {
   const handleGyroGranted = useCallback(() => setGyroStatus('granted'), []);
   const handleGyroDenied  = useCallback(() => setGyroStatus('denied'),  []);
 
-  return (
-    <div className="game-page">
-      {/* Header */}
-      <header className="game-header">
-        <h1 className="game-logo">🏹 Archery</h1>
-        <p className="game-tagline">First Person · 3 Arrows · Gyro Aim</p>
-      </header>
+  // Show header only on non-game screens (results / permission).
+  // During active gameplay the Phaser canvas has its own HUD.
+  const showHeader = results !== null || gyroStatus === 'pending';
 
-      {/* Game area */}
+  return (
+    <div className={`game-page ${showHeader ? '' : 'game-page--fullplay'}`}>
+      {showHeader && (
+        <header className="game-header">
+          <h1 className="game-logo">🏹 Archery</h1>
+          <p className="game-tagline">First Person · 3 Arrows · Gyro Aim</p>
+        </header>
+      )}
+
       <main className="game-main">
         {results ? (
           <ResultsScreen
@@ -157,7 +161,6 @@ export default function GamePage() {
             onRestart={handleRestart}
           />
         ) : gyroStatus === 'pending' ? (
-          // iOS must grant permission before Phaser mounts
           <GyroPermissionScreen
             onGranted={handleGyroGranted}
             onDenied={handleGyroDenied}
