@@ -239,18 +239,18 @@ function createArcheryScene(onGameFinished) {
     shotsLog   = [];
     isFiring   = false;
 
-    // World-pan state (gyro drives these)
+    // World-pan state
     worldOffsetX   = 0;   // current interpolated world shift (px)
     worldOffsetY   = 0;
-    targetOffsetX  = 0;   // desired world shift from gyro
+    targetOffsetX  = 0;   // desired world shift from drag
     targetOffsetY  = 0;
 
-    // Gyro calibration baseline
-    betaOffset  = null;   // null until first event received
-    gammaOffset = null;
-
-    // Bound event handler (kept so we can remove it in shutdown)
-    _gyroHandler = null;
+    // Drag-to-aim state
+    isDrawing   = false;
+    dragStartX  = 0;
+    dragStartY  = 0;
+    baseOffsetX = 0;
+    baseOffsetY = 0;
 
     // Phaser game objects
     bgSprite     = null;
@@ -263,8 +263,6 @@ function createArcheryScene(onGameFinished) {
     arrowsText   = null;
     scorePopup   = null;
     totalText    = null;
-    gyroHint     = null;   // "Tap to shoot" / calibrate label
-    calibBtn     = null;   // in-game calibrate button text
 
     // ── Preload ────────────────────────────────────────────────────────────
     preload() { /* All textures are generated programmatically in create() */ }
@@ -304,53 +302,18 @@ function createArcheryScene(onGameFinished) {
       // ── HUD ──────────────────────────────────────────────────────────────
       this.createHUD();
 
-      // ── Gyroscope listener ───────────────────────────────────────────────
-      this._gyroHandler = this.onDeviceOrientation.bind(this);
-      window.addEventListener('deviceorientation', this._gyroHandler, true);
-
-      // ── Input: single tap fires ───────────────────────────────────────────
+      // ── Input: drag to aim, release to fire ──────────────────────────────
       this.input.on('pointerdown', this.onPointerDown, this);
+      this.input.on('pointermove', this.onPointerMove, this);
+      this.input.on('pointerup',   this.onPointerUp,   this);
+      this.input.on('pointerout',  this.onPointerUp,   this); // Cancel draw if finger leaves canvas
 
       // ── Scene shutdown cleanup ────────────────────────────────────────────
       this.events.once('shutdown', this.cleanUp, this);
       this.events.once('destroy',  this.cleanUp, this);
     }
 
-    // ── Calibration ────────────────────────────────────────────────────────
-    // Store the current raw angles as the "zero" reference.
-    calibrateGyro(beta, gamma) {
-      this.betaOffset  = beta;
-      this.gammaOffset = gamma;
-      // Snap world immediately to center so there's no jump
-      this.targetOffsetX = 0;
-      this.targetOffsetY = 0;
-    }
 
-    // ── DeviceOrientation handler ──────────────────────────────────────────
-    onDeviceOrientation(evt) {
-      const beta  = evt.beta  ?? 0;   // front/back tilt  → Y axis
-      const gamma = evt.gamma ?? 0;   // left/right tilt  → X axis
-
-      // Auto-calibrate on first event
-      if (this.betaOffset === null) {
-        this.calibrateGyro(beta, gamma);
-        return;
-      }
-
-      const dBeta  = beta  - this.betaOffset;   // positive = phone tilted forward
-      const dGamma = gamma - this.gammaOffset;  // positive = phone tilted right
-
-      // Tilting right  → gamma increases → world moves RIGHT (target appears to go right)
-      // Tilting forward→ beta  increases → world moves DOWN  (target appears to go down)
-      // We invert so it feels like looking left/right/up/down:
-      //   tilt right  → world shifts RIGHT (target drifts to the right of crosshair)
-      //   tilt forward→ world shifts DOWN  (target drifts down)
-      const rawX =  dGamma * PX_PER_DEGREE;
-      const rawY =  dBeta  * PX_PER_DEGREE;
-
-      this.targetOffsetX = Phaser.Math.Clamp(rawX, -MAX_OFFSET_X, MAX_OFFSET_X);
-      this.targetOffsetY = Phaser.Math.Clamp(rawY, -MAX_OFFSET_Y, MAX_OFFSET_Y);
-    }
 
     // ── Update (called every frame) ────────────────────────────────────────
     update() {
@@ -369,14 +332,51 @@ function createArcheryScene(onGameFinished) {
       // Crosshair stays exactly at center
       this.crosshairSpr.setPosition(GAME_W / 2, GAME_H / 2);
 
-      // Breathing pulse on crosshair
-      const alpha = 0.80 + Math.sin(this.time.now / 420) * 0.18;
-      this.crosshairSpr.setAlpha(this.isFiring ? 0 : alpha);
+      // Crosshair styling (pulse heavily when drawing)
+      if (this.isFiring) {
+        this.crosshairSpr.setAlpha(0);
+      } else if (this.isDrawing) {
+        const pulse = 0.70 + Math.sin(this.time.now / 150) * 0.30;
+        this.crosshairSpr.setAlpha(pulse);
+        this.crosshairSpr.setScale(1.1);
+      } else {
+        const alpha = 0.60 + Math.sin(this.time.now / 420) * 0.18;
+        this.crosshairSpr.setAlpha(alpha);
+        this.crosshairSpr.setScale(1.0);
+      }
     }
 
-    // ── Tap input → fire ───────────────────────────────────────────────────
-    onPointerDown() {
+    // ── Drag Input Handlers ────────────────────────────────────────────────
+    onPointerDown(ptr) {
       if (this.isFiring || this.arrowsLeft <= 0) return;
+      this.isDrawing = true;
+      this.dragStartX = ptr.x;
+      this.dragStartY = ptr.y;
+      this.baseOffsetX = this.targetOffsetX;
+      this.baseOffsetY = this.targetOffsetY;
+    }
+
+    onPointerMove(ptr) {
+      if (!this.isDrawing) return;
+      
+      const dx = ptr.x - this.dragStartX;
+      const dy = ptr.y - this.dragStartY;
+      
+      // Moving finger left (negative dx) should move world left (camera right)
+      // Adjust sensitivity multiplier as needed (e.g., 1.5 for faster panning)
+      const sensitivity = 1.2;
+      const rawX = this.baseOffsetX + dx * sensitivity;
+      const rawY = this.baseOffsetY + dy * sensitivity;
+      
+      this.targetOffsetX = Phaser.Math.Clamp(rawX, -MAX_OFFSET_X, MAX_OFFSET_X);
+      this.targetOffsetY = Phaser.Math.Clamp(rawY, -MAX_OFFSET_Y, MAX_OFFSET_Y);
+    }
+
+    onPointerUp() {
+      if (!this.isDrawing) return;
+      this.isDrawing = false;
+      
+      // Fire on release
       this.fireArrow();
     }
 
@@ -717,39 +717,17 @@ function createArcheryScene(onGameFinished) {
 
       this.updateWindHUD();
 
-      // Calibrate button — right side of row 2
-      this.calibBtn = this.add.text(GAME_W - 18, R2_Y, '⊕ Cal', {
+      // ── Hint text ─────────────────────────────────────────────────────────
+      const hint = this.add.text(GAME_W / 2, GAME_H - 130, 'Затисни, прицілься і відпусти для пострілу', {
         fontFamily: "'Rajdhani', 'Inter', sans-serif",
         fontSize: '14px',
-        color: '#64ddff',
-        stroke: '#000814',
-        strokeThickness: 2,
-      }).setOrigin(1, 0.5).setDepth(151).setInteractive({ useHandCursor: true });
-
-      this.calibBtn.on('pointerdown', (ptr) => {
-        ptr.event.stopPropagation();
-        if (this._lastBeta !== undefined) {
-          this.calibrateGyro(this._lastBeta, this._lastGamma);
-          // Brief flash feedback
-          this.tweens.add({
-            targets: this.calibBtn,
-            alpha: 0.2,
-            duration: 80,
-            yoyo: true,
-            repeat: 1,
-          });
-        }
-      });
-
-      // ── Hint text — raised well above home indicator ──────────────────────
-      const hint = this.add.text(GAME_W / 2, GAME_H - 130, 'Нахили телефон для прицілу  •  Тап — постріл', {
-        fontFamily: "'Rajdhani', 'Inter', sans-serif",
-        fontSize: '13px',
-        color: 'rgba(180,220,255,0.7)',
+        color: 'rgba(180,220,255,0.8)',
         align: 'center',
         wordWrap: { width: GAME_W - 40 },
+        stroke: '#000814',
+        strokeThickness: 3,
       }).setOrigin(0.5).setDepth(151);
-      this.tweens.add({ targets: hint, alpha: 0, delay: 4000, duration: 1200 });
+      this.tweens.add({ targets: hint, alpha: 0, delay: 5000, duration: 1200 });
     }
 
     // ── UI helpers ─────────────────────────────────────────────────────────
@@ -796,12 +774,9 @@ function createArcheryScene(onGameFinished) {
       });
     }
 
-    // ── Cleanup (remove global event listeners) ────────────────────────────
+    // ── Cleanup ────────────────────────────────────────────────────────────
     cleanUp() {
-      if (this._gyroHandler) {
-        window.removeEventListener('deviceorientation', this._gyroHandler, true);
-        this._gyroHandler = null;
-      }
+      // Nothing to clean up globally anymore
     }
   };
 }
