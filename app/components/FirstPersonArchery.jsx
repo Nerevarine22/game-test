@@ -46,232 +46,6 @@ function toHex(n) {
 
 // ─── Procedural texture generation ───────────────────────────────────────────
 function generateTextures(scene) {
-  // ── bg_gradient (oversized so panning never shows edge) ──────────────────
-  // We make the bg 2× wide and 1.6× tall so the parallax shift never clips.
-  {
-    const w = GAME_W * 2, h = GAME_H * 1.6;
-    const cvs = document.createElement('canvas');
-    cvs.width = w; cvs.height = h;
-    const ctx = cvs.getContext('2d');
-
-    // Sky
-    const sky = ctx.createLinearGradient(0, 0, 0, h * 0.55);
-    sky.addColorStop(0,   '#0a0a2e');
-    sky.addColorStop(0.4, '#0d2157');
-    sky.addColorStop(1,   '#1a4a7a');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, w, h * 0.55);
-
-    // Stars
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    for (let i = 0; i < 110; i++) {
-      const sx = Math.random() * w;
-      const sy = Math.random() * h * 0.5;
-      const sr = Math.random() * 1.2 + 0.3;
-      ctx.beginPath();
-      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Horizon glow
-    const glow = ctx.createLinearGradient(0, h * 0.48, 0, h * 0.62);
-    glow.addColorStop(0,   'rgba(100,220,255,0)');
-    glow.addColorStop(0.5, 'rgba(100,220,255,0.15)');
-    glow.addColorStop(1,   'rgba(100,220,255,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, h * 0.48, w, h * 0.14);
-
-    // Ground
-    const ground = ctx.createLinearGradient(0, h * 0.55, 0, h);
-    ground.addColorStop(0,   '#1e5c2a');
-    ground.addColorStop(0.3, '#174d20');
-    ground.addColorStop(1,   '#0c2e12');
-    ctx.fillStyle = ground;
-    ctx.fillRect(0, h * 0.55, w, h * 0.45);
-
-    // Lane lines
-    const horizonY = h * 0.55;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 8; i++) {
-      const x = (w / 8) * i;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, horizonY);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-
-    // Horizon line
-    ctx.strokeStyle = 'rgba(100,255,200,0.25)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, horizonY);
-    ctx.lineTo(w, horizonY);
-    ctx.stroke();
-
-    scene.textures.addCanvas('bg_gradient', cvs);
-  }
-
-  // ── target ───────────────────────────────────────────────────────────────
-  {
-    const size = TARGET_RADIUS * 2 + 8;
-    const cx = size / 2, cy = size / 2;
-    const cvs = document.createElement('canvas');
-    cvs.width = size; cvs.height = size;
-    const ctx = cvs.getContext('2d');
-
-    drawRing(ctx, cx, cy, TARGET_RADIUS,        null,      '#ffffff', '#aaaaaa', 1.5);
-    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.72, '#ffffff', '#2255ff', '#1133cc', 1.5);
-    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.45, '#2255ff', '#ff2222', '#cc0000', 1.5);
-    drawRing(ctx, cx, cy, TARGET_RADIUS * 0.15, '#ff2222', '#ffd700', '#e6a200', 1.5);
-
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(cx - TARGET_RADIUS, cy); ctx.lineTo(cx + TARGET_RADIUS, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, cy - TARGET_RADIUS); ctx.lineTo(cx, cy + TARGET_RADIUS); ctx.stroke();
-
-    const bhl = ctx.createRadialGradient(cx - 4, cy - 4, 1, cx, cy, TARGET_RADIUS * 0.12);
-    bhl.addColorStop(0, 'rgba(255,255,200,0.5)');
-    bhl.addColorStop(1, 'rgba(255,210,0,0)');
-    ctx.fillStyle = bhl;
-    ctx.beginPath(); ctx.arc(cx, cy, TARGET_RADIUS * 0.15, 0, Math.PI * 2); ctx.fill();
-
-    scene.textures.addCanvas('target', cvs);
-  }
-
-  // ── crosshair (bow sight) ────────────────────────────────────────────────
-  {
-    const w = 240, h = 160;
-    const cvs = document.createElement('canvas');
-    cvs.width = w; cvs.height = h;
-    const ctx = cvs.getContext('2d');
-    const cx = 80, cy = 80; // center of the ring is on the left side of this canvas
-
-    // The rod going to the right (connects to bow)
-    ctx.fillStyle = '#222222';
-    ctx.fillRect(cx, cy - 6, w - cx, 12);
-    ctx.fillStyle = '#111111';
-    ctx.fillRect(cx, cy + 2, w - cx, 4);
-
-    // Thick outer ring
-    ctx.beginPath();
-    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
-    ctx.lineWidth = 14;
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.stroke();
-
-    // Inner bevel
-    ctx.beginPath();
-    ctx.arc(cx, cy, 53, 0, Math.PI * 2);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#444444';
-    ctx.stroke();
-
-    // Glass reflection
-    const grad = ctx.createLinearGradient(cx - 50, cy - 50, cx + 50, cy + 50);
-    grad.addColorStop(0, 'rgba(255,255,255,0.15)');
-    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 52, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Thin crosshair
-    ctx.beginPath();
-    ctx.moveTo(cx - 52, cy); ctx.lineTo(cx + 52, cy);
-    ctx.moveTo(cx, cy - 52); ctx.lineTo(cx, cy + 52);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#000000';
-    ctx.stroke();
-
-    // Small center dot
-    ctx.fillStyle = '#ff0000';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    scene.textures.addCanvas('crosshair', cvs);
-  }
-
-  // ── bow riser ────────────────────────────────────────────────────────────
-  {
-    const w = 80, h = GAME_H;
-    const cvs = document.createElement('canvas');
-    cvs.width = w; cvs.height = h;
-    const ctx = cvs.getContext('2d');
-    
-    // Riser body
-    const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#4477ee');
-    grad.addColorStop(0.5, '#6699ff');
-    grad.addColorStop(1, '#2244aa');
-    ctx.fillStyle = grad;
-    
-    ctx.beginPath();
-    ctx.moveTo(w, 0);
-    ctx.lineTo(w - 15, 0);
-    ctx.lineTo(w - 30, h / 2 - 120);
-    ctx.lineTo(w - 50, h / 2 - 20); // mount area
-    ctx.lineTo(w - 50, h / 2 + 20);
-    ctx.lineTo(w - 30, h / 2 + 120);
-    ctx.lineTo(w - 15, h);
-    ctx.lineTo(w, h);
-    ctx.fill();
-
-    // Add some metallic details
-    ctx.fillStyle = '#111111';
-    ctx.beginPath(); ctx.arc(w - 35, h/2 - 80, 6, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(w - 35, h/2 + 80, 6, 0, Math.PI*2); ctx.fill();
-
-    // Arrow Shaft (horizontal pointing left)
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = '#111';
-    ctx.beginPath();
-    ctx.moveTo(w, h / 2 + 40);
-    ctx.lineTo(10, h / 2 + 40);
-    ctx.stroke();
-    
-    // Silver arrowhead
-    ctx.fillStyle = '#ddd';
-    ctx.beginPath();
-    ctx.moveTo(10, h / 2 + 40);
-    ctx.lineTo(25, h / 2 + 35);
-    ctx.lineTo(25, h / 2 + 45);
-    ctx.fill();
-
-    // Fletchings (feathers) at the right edge
-    ctx.fillStyle = '#ff2222';
-    ctx.beginPath();
-    ctx.moveTo(w, h / 2 + 40);
-    ctx.lineTo(w - 15, h / 2 + 30);
-    ctx.lineTo(w - 30, h / 2 + 40);
-    ctx.fill();
-    
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(w, h / 2 + 40);
-    ctx.lineTo(w - 15, h / 2 + 50);
-    ctx.lineTo(w - 30, h / 2 + 40);
-    ctx.fill();
-
-    scene.textures.addCanvas('bow', cvs);
-  }
-
-  // ── target stand (separate from bg so it moves with the target) ──────────
-  {
-    const w = 14, h = 120;
-    const cvs = document.createElement('canvas');
-    cvs.width = w; cvs.height = h;
-    const ctx = cvs.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0,   '#2a1a0a');
-    grad.addColorStop(0.5, '#5a3e1e');
-    grad.addColorStop(1,   '#2a1a0a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    scene.textures.addCanvas('target_stand', cvs);
-  }
-
   // ── wind_arrow ───────────────────────────────────────────────────────────
   {
     const size = 32;
@@ -296,12 +70,6 @@ function generateTextures(scene) {
 
     scene.textures.addCanvas('wind_arrow', cvs);
   }
-}
-
-function drawRing(ctx, cx, cy, r, _inner, fillColor, strokeColor, lw) {
-  ctx.fillStyle = fillColor;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = lw; ctx.stroke(); }
 }
 
 // ─── Main Scene ──────────────────────────────────────────────────────────────
@@ -332,12 +100,15 @@ function createArcheryScene(onGameFinished) {
     // Phaser game objects
     worldContainer = null;
     uiContainer  = null;
-    bgSprite     = null;
+    skySprite     = null;
+    horizonSprite = null;
+    grassSprite   = null;
+    shadowSprite  = null;
     standSprite  = null;
     targetSprite = null;
-    crosshairSpr = null;
+    arrowSprite  = null;
     bowSpr       = null;
-    arrowGfx     = null;
+    crosshairSpr = null;
     windText     = null;
     windArrow    = null;
     arrowsText   = null;
@@ -345,7 +116,17 @@ function createArcheryScene(onGameFinished) {
     totalText    = null;
 
     // ── Preload ────────────────────────────────────────────────────────────
-    preload() { /* All textures are generated programmatically in create() */ }
+    preload() {
+      this.load.image('sky_bg', 'assets/sky_bg.webp');
+      this.load.image('horizon', 'assets/horizon_silhouettes.png');
+      this.load.image('grass_floor', 'assets/grass_floor.webp');
+      this.load.image('shadow', 'assets/shadow.png');
+      this.load.image('target_stand', 'assets/target_stand.png');
+      this.load.image('target_shield', 'assets/target_shield.png');
+      this.load.image('bow_and_hand', 'assets/bow_and_hand.png');
+      this.load.image('crosshair', 'assets/crosshair.png');
+      this.load.image('arrow_shaft', 'assets/arrow_shaft.png');
+    }
 
     // ── Create ─────────────────────────────────────────────────────────────
     create() {
@@ -356,27 +137,37 @@ function createArcheryScene(onGameFinished) {
       this.worldContainer = this.add.container(0, 0);
       this.uiContainer = this.add.container(0, 0).setDepth(200);
 
-      // ── Background (oversized; panning anchor = center of canvas) ────────
-      this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, 'bg_gradient').setOrigin(0.5, 0.5);
+      // Layer 1 (Sky)
+      this.skySprite = this.add.image(GAME_W / 2, GAME_H * 0.25, 'sky_bg').setOrigin(0.5, 0.5).setDisplaySize(GAME_W * 2, GAME_H);
 
-      // ── Target & Stand ───────────────────────────────────────────────────
-      this.standSprite = this.add.image(TARGET_X, TARGET_Y + TARGET_RADIUS, 'target_stand').setOrigin(0.5, 0);
-      this.targetSprite = this.add.image(TARGET_X, TARGET_Y, 'target').setOrigin(0.5, 0.5);
+      // Layer 2 (Horizon)
+      this.horizonSprite = this.add.image(GAME_W / 2, GAME_H * 0.55, 'horizon').setOrigin(0.5, 1).setDisplaySize(GAME_W * 2, GAME_H * 0.3);
 
-      // ── Arrow graphics (flight animation) ────────────────────────────────
-      this.arrowGfx = this.add.graphics().setVisible(false);
+      // Layer 3 (Ground)
+      this.grassSprite = this.add.image(GAME_W / 2, GAME_H * 0.775, 'grass_floor').setOrigin(0.5, 0.5).setDisplaySize(GAME_W * 2, GAME_H * 0.55);
 
-      // ── Sight & Bow ──────────────────────────────────────────────────────
-      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'crosshair')
-        .setOrigin(80 / 240, 0.5)
-        .setDepth(100);
-      
-      this.bowSpr = this.add.image(GAME_W, GAME_H / 2, 'bow')
-        .setOrigin(1, 0.5)
-        .setDepth(99);
+      // Layer 4 (Drop Shadow)
+      this.shadowSprite = this.add.image(TARGET_X, TARGET_Y + TARGET_RADIUS, 'shadow').setOrigin(0.5, 0.5).setAlpha(0.6).setDisplaySize(160, 40);
+
+      // Layer 5 (Target Stand)
+      this.standSprite = this.add.image(TARGET_X, TARGET_Y + TARGET_RADIUS, 'target_stand').setOrigin(0.5, 1).setDisplaySize(30, 200);
+
+      // Layer 6 (Target Shield)
+      this.targetSprite = this.add.image(TARGET_X, TARGET_Y, 'target_shield').setOrigin(0.5, 0.5).setDisplaySize(TARGET_RADIUS * 2, TARGET_RADIUS * 2);
+
+      // Layer 7 (Dynamic Arrows)
+      this.arrowSprite = this.add.image(0, 0, 'arrow_shaft').setVisible(false).setOrigin(0.5, 0);
+
+      // Layer 8 (First-Person Bow)
+      this.bowSpr = this.add.image(this.cameras.main.width, this.cameras.main.height, 'bow_and_hand').setOrigin(1, 1).setDepth(99).setDisplaySize(GAME_W * 0.5, GAME_H * 0.4);
+
+      // Layer 9 (Crosshair)
+      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'crosshair').setOrigin(0.5, 0.5).setDepth(100).setDisplaySize(120, 120);
 
       this.worldContainer.add([
-        this.bgSprite, this.standSprite, this.targetSprite, this.arrowGfx, this.crosshairSpr, this.bowSpr
+        this.skySprite, this.horizonSprite, this.grassSprite,
+        this.shadowSprite, this.standSprite, this.targetSprite,
+        this.arrowSprite, this.crosshairSpr, this.bowSpr
       ]);
 
       // ── HUD ──────────────────────────────────────────────────────────────
@@ -409,8 +200,12 @@ function createArcheryScene(onGameFinished) {
       const ox = this.worldOffsetX;
       const oy = this.worldOffsetY;
 
-      // Move world objects; bg moves at 0.4× for a parallax feel
-      this.bgSprite.setPosition(GAME_W / 2 + ox * 0.4, GAME_H / 2 + oy * 0.4);
+      // Move world objects; parallax
+      this.skySprite.setPosition(GAME_W / 2 + ox * 0.1, GAME_H * 0.25 + oy * 0.1);
+      this.horizonSprite.setPosition(GAME_W / 2 + ox * 0.2, GAME_H * 0.55 + oy * 0.2);
+      this.grassSprite.setPosition(GAME_W / 2 + ox * 0.4, GAME_H * 0.775 + oy * 0.4);
+
+      this.shadowSprite.setPosition(TARGET_X + ox, TARGET_Y + TARGET_RADIUS + oy);
       this.targetSprite.setPosition(TARGET_X + ox, TARGET_Y + oy);
       this.standSprite.setPosition(TARGET_X + ox, TARGET_Y + TARGET_RADIUS + oy);
 
@@ -511,7 +306,7 @@ function createArcheryScene(onGameFinished) {
       const SCALE_END   = 0.2;
       const startTime   = this.time.now;
 
-      this.arrowGfx.setVisible(true);
+      this.arrowSprite.setVisible(true);
       this._impactFired = false;
 
       const bezier = (p0, p1, p2, t) =>
@@ -521,7 +316,7 @@ function createArcheryScene(onGameFinished) {
         delay: 16,
         repeat: Math.ceil(FLIGHT_MS / 16) + 2,
         callback: () => {
-          if (!this.arrowGfx.visible && !this.isFiring) return;
+          if (!this.arrowSprite.visible && !this.isFiring) return;
 
           const elapsed = this.time.now - startTime;
           const t  = Math.min(elapsed / FLIGHT_MS, 1);
@@ -535,7 +330,7 @@ function createArcheryScene(onGameFinished) {
 
           if (t >= 1 && !this._impactFired) {
             this._impactFired = true;
-            this.arrowGfx.setVisible(false);
+            this.arrowSprite.setVisible(false);
             // Pass the world offsets so scoring is in world space
             this.onArrowImpact(finalX, finalY, shotOffsetX, shotOffsetY);
           }
@@ -545,24 +340,8 @@ function createArcheryScene(onGameFinished) {
 
     // ── Draw Arrow (flight) ────────────────────────────────────────────────
     drawArrow(x, y, scale) {
-      const g = this.arrowGfx;
-      g.clear();
-
-      const shaft = 40 * scale;
-      const headW = 8  * scale;
-      const headH = 12 * scale;
-
-      g.lineStyle(Math.max(1, 3 * scale), 0xd4a85a, 1);
-      g.lineBetween(x, y + headH, x, y + headH + shaft);
-
-      g.fillStyle(0xb0bec5, 1);
-      g.fillTriangle(x, y, x - headW, y + headH, x + headW, y + headH);
-
-      g.fillStyle(0xe8f4ff, 0.3);
-      g.fillTriangle(x, y + 2, x - headW * 0.5, y + headH, x + headW * 0.5, y + headH);
-
-      g.lineStyle(Math.max(1, 2 * scale), 0xff4444, 1);
-      g.lineBetween(x - headW * 0.5, y + headH + shaft, x + headW * 0.5, y + headH + shaft);
+      this.arrowSprite.setPosition(x, y);
+      this.arrowSprite.setScale(scale);
     }
 
     // ── Impact & Scoring ───────────────────────────────────────────────────
