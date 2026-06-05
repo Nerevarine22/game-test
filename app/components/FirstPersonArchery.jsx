@@ -72,53 +72,34 @@ function generateTextures(scene) {
   }
   // ── volumetric_crosshair ────────────────────────────────────────────────
   {
-    const size = 100;
+    const size = 200;
     const cvs  = document.createElement('canvas');
     cvs.width = size; cvs.height = size;
     const ctx  = cvs.getContext('2d');
     const cx   = size / 2, cy = size / 2;
 
-    // Volumetric shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
+    // Sight pin arm (extends from left edge of ring to far right)
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(cx - 40, cy - 4, size / 2 + 40, 8);
 
-    // Outer ring
+    // Thick dark ring
     ctx.beginPath();
-    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#00e5ff';
+    ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#222222';
     ctx.stroke();
 
-    // Inner glow
-    ctx.shadowColor = 'transparent';
-    const grad = ctx.createRadialGradient(cx, cy, 26, cx, cy, 32);
-    grad.addColorStop(0, 'rgba(0, 229, 255, 0)');
-    grad.addColorStop(1, 'rgba(0, 229, 255, 0.4)');
-    ctx.fillStyle = grad;
+    // Inner thin ring (optional, for style)
     ctx.beginPath();
-    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Cross lines
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(cx - 48, cy); ctx.lineTo(cx - 18, cy);
-    ctx.moveTo(cx + 18, cy); ctx.lineTo(cx + 48, cy);
-    ctx.moveTo(cx, cy - 48); ctx.lineTo(cx, cy - 18);
-    ctx.moveTo(cx, cy + 18); ctx.lineTo(cx, cy + 48);
+    ctx.arc(cx, cy, 33, 0, Math.PI * 2);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#000000';
     ctx.stroke();
 
-    // Center dot
-    ctx.fillStyle = '#ff1744';
+    // Center red dot
+    ctx.fillStyle = '#ff0000';
     ctx.beginPath();
     ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx - 1.5, cy - 1.5, 1.5, 0, Math.PI * 2);
     ctx.fill();
 
     scene.textures.addCanvas('volumetric_crosshair', cvs);
