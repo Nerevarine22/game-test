@@ -227,12 +227,26 @@ function createArcheryScene(onGameFinished) {
 
     // ── Update (called every frame) ────────────────────────────────────────
     update() {
-      // Smooth-lerp world offset toward gyro target
-      this.worldOffsetX = Phaser.Math.Linear(this.worldOffsetX, this.targetOffsetX, LERP_FACTOR);
-      this.worldOffsetY = Phaser.Math.Linear(this.worldOffsetY, this.targetOffsetY, LERP_FACTOR);
+      // ── Physics & Aiming ───────────────────────────────────────────────
+      if (this.crosshairX === undefined) {
+        this.crosshairX = GAME_W / 2;
+        this.crosshairY = GAME_H / 2;
+        this.crosshairVx = 0;
+        this.crosshairVy = 0;
+      }
 
-      const ox = this.worldOffsetX;
-      const oy = this.worldOffsetY;
+      // Apply velocity (momentum)
+      this.crosshairX += this.crosshairVx;
+      this.crosshairY += this.crosshairVy;
+
+      // Friction: 0.98 allows long drifts, feels like sliding mass
+      this.crosshairVx *= 0.98;
+      this.crosshairVy *= 0.98;
+
+      // Clamp crosshair to reasonable bounds so it doesn't fly off screen
+      const maxOffset = GAME_W * 0.45;
+      this.crosshairX = Phaser.Math.Clamp(this.crosshairX, GAME_W/2 - maxOffset, GAME_W/2 + maxOffset);
+      this.crosshairY = Phaser.Math.Clamp(this.crosshairY, GAME_H/2 - maxOffset, GAME_H/2 + maxOffset);
 
       // Static world
       this.skySprite.setPosition(GAME_W / 2, GAME_H * 0.25);
@@ -243,18 +257,7 @@ function createArcheryScene(onGameFinished) {
       this.targetSprite.setPosition(TARGET_X, TARGET_Y);
       this.standSprite.setPosition(TARGET_X, TARGET_Y + TARGET_RADIUS);
 
-      // Crosshair moves instead (with inertia)
-      const targetCrosshairX = GAME_W / 2 + ox;
-      const targetCrosshairY = GAME_H / 2 + oy;
-
-      if (this.crosshairX === undefined) {
-        this.crosshairX = targetCrosshairX;
-        this.crosshairY = targetCrosshairY;
-      }
-
-      this.crosshairX = Phaser.Math.Linear(this.crosshairX, targetCrosshairX, 0.08);
-      this.crosshairY = Phaser.Math.Linear(this.crosshairY, targetCrosshairY, 0.08);
-
+      // Apply to sprites
       this.crosshairSpr.setPosition(this.crosshairX, this.crosshairY);
 
       // Make the bow follow the crosshair (First-Person arms movement)
@@ -262,8 +265,8 @@ function createArcheryScene(onGameFinished) {
       const armOffsetY = this.crosshairY - (GAME_H / 2);
       this.bowSpr.setPosition(GAME_W + armOffsetX, GAME_H + armOffsetY);
       
-      // Slight dynamic tilt based on arm movement
-      this.bowSpr.setRotation(armOffsetX * 0.001);
+      // Dynamic tilt based on velocity for realistic weight feeling
+      this.bowSpr.setRotation(this.crosshairVx * 0.005);
 
       // Hide sight when firing
       if (this.isFiring) {
@@ -277,10 +280,13 @@ function createArcheryScene(onGameFinished) {
     onPointerDown(ptr) {
       if (this.isFiring || this.arrowsLeft <= 0) return;
       this.isDrawing = true;
-      this.dragStartX = ptr.x;
-      this.dragStartY = ptr.y;
-      this.baseOffsetX = this.targetOffsetX;
-      this.baseOffsetY = this.targetOffsetY;
+      this.lastPtrX = ptr.x;
+      this.lastPtrY = ptr.y;
+      
+      if (this.crosshairVx === undefined) {
+        this.crosshairVx = 0;
+        this.crosshairVy = 0;
+      }
       
       // Zoom in
       this.cameras.main.zoomTo(1.7, 300, 'Sine.easeOut');
@@ -289,17 +295,15 @@ function createArcheryScene(onGameFinished) {
     onPointerMove(ptr) {
       if (!this.isDrawing) return;
       
-      const dx = ptr.x - this.dragStartX;
-      const dy = ptr.y - this.dragStartY;
+      const dx = ptr.x - this.lastPtrX;
+      const dy = ptr.y - this.lastPtrY;
+      this.lastPtrX = ptr.x;
+      this.lastPtrY = ptr.y;
       
-      // Moving finger left (negative dx) should move world left (camera right)
-      // Adjust sensitivity multiplier as needed (e.g., 1.5 for faster panning)
-      const sensitivity = 1.2;
-      const rawX = this.baseOffsetX + dx * sensitivity;
-      const rawY = this.baseOffsetY + dy * sensitivity;
-      
-      this.targetOffsetX = Phaser.Math.Clamp(rawX, -MAX_OFFSET_X, MAX_OFFSET_X);
-      this.targetOffsetY = Phaser.Math.Clamp(rawY, -MAX_OFFSET_Y, MAX_OFFSET_Y);
+      // Trackball sensitivity: dragging adds to velocity
+      const sensitivity = 0.15;
+      this.crosshairVx += dx * sensitivity;
+      this.crosshairVy += dy * sensitivity;
     }
 
     onPointerUp() {
