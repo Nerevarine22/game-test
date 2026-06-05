@@ -70,40 +70,6 @@ function generateTextures(scene) {
 
     scene.textures.addCanvas('wind_arrow', cvs);
   }
-  // ── volumetric_crosshair ────────────────────────────────────────────────
-  {
-    const size = 200;
-    const cvs  = document.createElement('canvas');
-    cvs.width = size; cvs.height = size;
-    const ctx  = cvs.getContext('2d');
-    const cx   = size / 2, cy = size / 2;
-
-    // Sight pin arm (extends from left edge of ring to far right)
-    ctx.fillStyle = '#222222';
-    ctx.fillRect(cx - 40, cy - 4, size / 2 + 40, 8);
-
-    // Thick dark ring
-    ctx.beginPath();
-    ctx.arc(cx, cy, 40, 0, Math.PI * 2);
-    ctx.lineWidth = 14;
-    ctx.strokeStyle = '#222222';
-    ctx.stroke();
-
-    // Inner thin ring (optional, for style)
-    ctx.beginPath();
-    ctx.arc(cx, cy, 33, 0, Math.PI * 2);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#000000';
-    ctx.stroke();
-
-    // Center red dot
-    ctx.fillStyle = '#ff0000';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    scene.textures.addCanvas('volumetric_crosshair', cvs);
-  }
 }
 
 // ─── Main Scene ──────────────────────────────────────────────────────────────
@@ -192,16 +158,16 @@ function createArcheryScene(onGameFinished) {
       // Layer 7 (Dynamic Arrows)
       this.arrowSprite = this.add.image(0, 0, 'arrow_shaft').setVisible(false).setOrigin(0.5, 0);
 
-      // Layer 8 (First-Person Bow)
-      this.bowSpr = this.add.image(this.cameras.main.width, this.cameras.main.height, 'bow_and_hand').setOrigin(1, 1).setDepth(99).setDisplaySize(GAME_W * 0.5, GAME_H * 0.4);
-
-      // Layer 9 (Crosshair)
-      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'volumetric_crosshair').setOrigin(0.5, 0.5).setDepth(100);
+      // Layer 8 (First-Person Bow with integrated sight)
+      this.bowSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'bow_with_sight')
+                          .setOrigin(0.265, 0.539) // Anchor exactly at the sight ring center
+                          .setDepth(99)
+                          .setScale(GAME_H / 700); // Scale appropriately
 
       this.worldContainer.add([
         this.skySprite, this.horizonSprite, this.grassSprite,
         this.shadowSprite, this.standSprite, this.targetSprite,
-        this.arrowSprite, this.crosshairSpr, this.bowSpr
+        this.arrowSprite, this.bowSpr
       ]);
 
       // ── HUD ──────────────────────────────────────────────────────────────
@@ -258,21 +224,17 @@ function createArcheryScene(onGameFinished) {
       this.standSprite.setPosition(TARGET_X, TARGET_Y + TARGET_RADIUS);
 
       // Apply to sprites
-      this.crosshairSpr.setPosition(this.crosshairX, this.crosshairY);
-
-      // Make the bow follow the crosshair (First-Person arms movement)
-      const armOffsetX = this.crosshairX - (GAME_W / 2);
-      const armOffsetY = this.crosshairY - (GAME_H / 2);
-      this.bowSpr.setPosition(GAME_W + armOffsetX, GAME_H + armOffsetY);
+      // The bow's origin is now the crosshair center, so just position it exactly at crosshairX/Y!
+      this.bowSpr.setPosition(this.crosshairX, this.crosshairY);
       
       // Dynamic tilt based on velocity for realistic weight feeling
       this.bowSpr.setRotation(this.crosshairVx * 0.005);
 
       // Hide sight when firing
       if (this.isFiring) {
-        this.crosshairSpr.setAlpha(0);
+        this.bowSpr.setAlpha(0.3); // Semi-transparent when firing
       } else {
-        this.crosshairSpr.setAlpha(1);
+        this.bowSpr.setAlpha(1);
       }
     }
 
@@ -452,7 +414,7 @@ function createArcheryScene(onGameFinished) {
       this.time.delayedCall(1200, () => {
         this.isFiring = false;
         if (this.arrowsLeft <= 0) {
-          this.crosshairSpr.setVisible(false);
+          this.bowSpr.setVisible(false);
           this.endGame();
         }
       });
