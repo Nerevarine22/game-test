@@ -276,6 +276,14 @@ function createArcheryScene(onGameFinished) {
 
       this.crosshairSpr.setPosition(this.crosshairX, this.crosshairY);
 
+      // Make the bow follow the crosshair (First-Person arms movement)
+      const armOffsetX = this.crosshairX - (GAME_W / 2);
+      const armOffsetY = this.crosshairY - (GAME_H / 2);
+      this.bowSpr.setPosition(GAME_W + armOffsetX, GAME_H + armOffsetY);
+      
+      // Slight dynamic tilt based on arm movement
+      this.bowSpr.setRotation(armOffsetX * 0.001);
+
       // Hide sight when firing
       if (this.isFiring) {
         this.crosshairSpr.setAlpha(0);
@@ -349,8 +357,9 @@ function createArcheryScene(onGameFinished) {
       const startX = this.crosshairX !== undefined ? this.crosshairX : GAME_W / 2 + shotOffsetX;
       const startY = this.crosshairY !== undefined ? this.crosshairY : GAME_H / 2 + shotOffsetY;
 
-      // Arrow spawns at bottom-center coming toward the player
-      const SPAWN_X = GAME_W / 2;
+      // Arrow spawns relative to the moving bow
+      const armOffsetX = this.crosshairX !== undefined ? this.crosshairX - (GAME_W / 2) : 0;
+      const SPAWN_X = GAME_W / 2 + armOffsetX * 0.6;
       const SPAWN_Y = GAME_H + 30;
 
       const FLIGHT_MS    = 1000;
