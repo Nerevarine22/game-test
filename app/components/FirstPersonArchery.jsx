@@ -70,6 +70,59 @@ function generateTextures(scene) {
 
     scene.textures.addCanvas('wind_arrow', cvs);
   }
+  // ── volumetric_crosshair ────────────────────────────────────────────────
+  {
+    const size = 100;
+    const cvs  = document.createElement('canvas');
+    cvs.width = size; cvs.height = size;
+    const ctx  = cvs.getContext('2d');
+    const cx   = size / 2, cy = size / 2;
+
+    // Volumetric shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#00e5ff';
+    ctx.stroke();
+
+    // Inner glow
+    ctx.shadowColor = 'transparent';
+    const grad = ctx.createRadialGradient(cx, cy, 26, cx, cy, 32);
+    grad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+    grad.addColorStop(1, 'rgba(0, 229, 255, 0.4)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cross lines
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(cx - 48, cy); ctx.lineTo(cx - 18, cy);
+    ctx.moveTo(cx + 18, cy); ctx.lineTo(cx + 48, cy);
+    ctx.moveTo(cx, cy - 48); ctx.lineTo(cx, cy - 18);
+    ctx.moveTo(cx, cy + 18); ctx.lineTo(cx, cy + 48);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = '#ff1744';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx - 1.5, cy - 1.5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    scene.textures.addCanvas('volumetric_crosshair', cvs);
+  }
 }
 
 // ─── Main Scene ──────────────────────────────────────────────────────────────
@@ -162,7 +215,7 @@ function createArcheryScene(onGameFinished) {
       this.bowSpr = this.add.image(this.cameras.main.width, this.cameras.main.height, 'bow_and_hand').setOrigin(1, 1).setDepth(99).setDisplaySize(GAME_W * 0.5, GAME_H * 0.4);
 
       // Layer 9 (Crosshair)
-      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'crosshair').setOrigin(0.5, 0.5).setDepth(100).setDisplaySize(120, 120);
+      this.crosshairSpr = this.add.image(GAME_W / 2, GAME_H / 2, 'volumetric_crosshair').setOrigin(0.5, 0.5).setDepth(100);
 
       this.worldContainer.add([
         this.skySprite, this.horizonSprite, this.grassSprite,
@@ -209,8 +262,19 @@ function createArcheryScene(onGameFinished) {
       this.targetSprite.setPosition(TARGET_X, TARGET_Y);
       this.standSprite.setPosition(TARGET_X, TARGET_Y + TARGET_RADIUS);
 
-      // Crosshair moves instead
-      this.crosshairSpr.setPosition(GAME_W / 2 + ox, GAME_H / 2 + oy);
+      // Crosshair moves instead (with inertia)
+      const targetCrosshairX = GAME_W / 2 + ox;
+      const targetCrosshairY = GAME_H / 2 + oy;
+
+      if (this.crosshairX === undefined) {
+        this.crosshairX = targetCrosshairX;
+        this.crosshairY = targetCrosshairY;
+      }
+
+      this.crosshairX = Phaser.Math.Linear(this.crosshairX, targetCrosshairX, 0.08);
+      this.crosshairY = Phaser.Math.Linear(this.crosshairY, targetCrosshairY, 0.08);
+
+      this.crosshairSpr.setPosition(this.crosshairX, this.crosshairY);
 
       // Hide sight when firing
       if (this.isFiring) {
@@ -282,8 +346,8 @@ function createArcheryScene(onGameFinished) {
       const shotOffsetY = this.worldOffsetY;
 
       // Crosshair canvas position
-      const startX = GAME_W / 2 + shotOffsetX;
-      const startY = GAME_H / 2 + shotOffsetY;
+      const startX = this.crosshairX !== undefined ? this.crosshairX : GAME_W / 2 + shotOffsetX;
+      const startY = this.crosshairY !== undefined ? this.crosshairY : GAME_H / 2 + shotOffsetY;
 
       // Arrow spawns at bottom-center coming toward the player
       const SPAWN_X = GAME_W / 2;
