@@ -200,17 +200,17 @@ function createArcheryScene(onGameFinished) {
       const ox = this.worldOffsetX;
       const oy = this.worldOffsetY;
 
-      // Move world objects; parallax
-      this.skySprite.setPosition(GAME_W / 2 + ox * 0.1, GAME_H * 0.25 + oy * 0.1);
-      this.horizonSprite.setPosition(GAME_W / 2 + ox * 0.2, GAME_H * 0.55 + oy * 0.2);
-      this.grassSprite.setPosition(GAME_W / 2 + ox * 0.4, GAME_H * 0.775 + oy * 0.4);
+      // Static world
+      this.skySprite.setPosition(GAME_W / 2, GAME_H * 0.25);
+      this.horizonSprite.setPosition(GAME_W / 2, GAME_H * 0.55);
+      this.grassSprite.setPosition(GAME_W / 2, GAME_H * 0.775);
 
-      this.shadowSprite.setPosition(TARGET_X + ox, TARGET_Y + TARGET_RADIUS + oy);
-      this.targetSprite.setPosition(TARGET_X + ox, TARGET_Y + oy);
-      this.standSprite.setPosition(TARGET_X + ox, TARGET_Y + TARGET_RADIUS + oy);
+      this.shadowSprite.setPosition(TARGET_X, TARGET_Y + TARGET_RADIUS);
+      this.targetSprite.setPosition(TARGET_X, TARGET_Y);
+      this.standSprite.setPosition(TARGET_X, TARGET_Y + TARGET_RADIUS);
 
-      // Crosshair stays exactly at center
-      this.crosshairSpr.setPosition(GAME_W / 2, GAME_H / 2);
+      // Crosshair moves instead
+      this.crosshairSpr.setPosition(GAME_W / 2 + ox, GAME_H / 2 + oy);
 
       // Hide sight when firing
       if (this.isFiring) {
@@ -281,9 +281,9 @@ function createArcheryScene(onGameFinished) {
       const shotOffsetX = this.worldOffsetX;
       const shotOffsetY = this.worldOffsetY;
 
-      // Crosshair canvas position (always screen center)
-      const startX = GAME_W / 2;
-      const startY = GAME_H / 2;
+      // Crosshair canvas position
+      const startX = GAME_W / 2 + shotOffsetX;
+      const startY = GAME_H / 2 + shotOffsetY;
 
       // Arrow spawns at bottom-center coming toward the player
       const SPAWN_X = GAME_W / 2;
@@ -352,9 +352,9 @@ function createArcheryScene(onGameFinished) {
     //   dx = finalX - (TARGET_X + shotOffsetX)   ... but we cancel TARGET_X vs startX:
     // Since startX = GAME_W/2 = TARGET_X, the offset equals the world offset.
     onArrowImpact(finalX, finalY, shotOffsetX, shotOffsetY) {
-      // Canvas-space target center at time of shot
-      const targetCanvasX = TARGET_X + shotOffsetX;
-      const targetCanvasY = TARGET_Y + shotOffsetY;
+      // The target is static
+      const targetCanvasX = TARGET_X;
+      const targetCanvasY = TARGET_Y;
 
       const dx = finalX - targetCanvasX;
       const dy = finalY - targetCanvasY;
@@ -384,12 +384,7 @@ function createArcheryScene(onGameFinished) {
 
       // ── Impact marker (placed in world space — moves with target) ─────
       // We offset the marker by the world offset so it appears stuck to the target
-      this.drawImpactMarker(
-        finalX - shotOffsetX,   // local coords relative to target group
-        finalY - shotOffsetY,
-        shotOffsetX,
-        shotOffsetY
-      );
+      this.drawImpactMarker(finalX, finalY);
 
       // ── Score popup ───────────────────────────────────────────────────
       this.showScorePopup(label, labelColor);
@@ -449,17 +444,11 @@ function createArcheryScene(onGameFinished) {
     // ── Impact marker (world-space, stays on target after further tilting) ──
     // We create a container positioned in screen-space at the world offset
     // and place the marker graphics relative to the canvas-center.
-    drawImpactMarker(localX, localY, shotOffsetX, shotOffsetY) {
-      // The "local" coords are relative to the center-of-canvas.
-      // We add a graphics object and position it in world coords.
-      // During update(), we would need to reposition it — simpler: use
-      // a Phaser Container that we reposition each frame.
-      // For simplicity: store markers in an array, reposition in update().
+    drawImpactMarker(finalX, finalY) {
       if (!this._impactMarkers) this._impactMarkers = [];
 
       const g = this.add.graphics().setDepth(50);
       this.worldContainer.add(g);
-      // Draw relative to its own (0,0)
       g.lineStyle(2.5, 0xd4a85a, 0.9);
       g.lineBetween(0, -12, 0, 5);
       g.fillStyle(0xb0bec5, 1);
@@ -467,20 +456,12 @@ function createArcheryScene(onGameFinished) {
       g.fillStyle(0xff4444, 1);
       g.fillCircle(0, 5, 2);
 
-      // localX/localY are in target-relative space (i.e. offset from TARGET_X,TARGET_Y)
-      // We need to reconstruct: markerWorldX = TARGET_X + (finalX - targetCanvasX)
-      //                                      = TARGET_X + dx
-      // where dx = finalX - (TARGET_X + shotOffsetX)
-      // Equivalent: localX = finalX - shotOffsetX  (we passed that in)
-      g.setPosition(localX + shotOffsetX, localY + shotOffsetY);
+      g.setPosition(finalX, finalY);
 
-      // Save so update() can reposition as world pans
-      // The marker's *world-relative* anchor is (localX - TARGET_X, localY - TARGET_Y)
-      // relative to the target. In update, its canvas pos = TARGET_X + dxLocal + worldOffsetX
       this._impactMarkers.push({
         gfx: g,
-        dxLocal: localX - TARGET_X,   // offset from target origin in world space
-        dyLocal: localY - TARGET_Y,
+        dxLocal: finalX - TARGET_X,
+        dyLocal: finalY - TARGET_Y,
       });
     }
 
@@ -691,12 +672,10 @@ export default function FirstPersonArchery({ onGameFinished, gyroPermissionGrant
       const origUpdate = SceneClass.prototype.update;
       SceneClass.prototype.update = function () {
         origUpdate.call(this);
-        // Reposition all stuck impact markers so they follow the target
+        // Reposition all stuck impact markers (now static)
         if (this._impactMarkers) {
-          const ox = this.worldOffsetX;
-          const oy = this.worldOffsetY;
           for (const m of this._impactMarkers) {
-            m.gfx.setPosition(TARGET_X + m.dxLocal + ox, TARGET_Y + m.dyLocal + oy);
+            m.gfx.setPosition(TARGET_X + m.dxLocal, TARGET_Y + m.dyLocal);
           }
         }
       };
