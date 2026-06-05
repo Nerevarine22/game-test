@@ -117,15 +117,15 @@ function createArcheryScene(onGameFinished) {
 
     // ── Preload ────────────────────────────────────────────────────────────
     preload() {
-      this.load.image('sky_bg', 'assets/sky_bg.png');
-      this.load.image('horizon', 'assets/horizon_silhouettes.png');
-      this.load.image('grass_floor', 'assets/grass_floor.png');
-      this.load.image('shadow', 'assets/shadow.png');
-      this.load.image('target_stand', 'assets/target_stand.png');
-      this.load.image('target_shield', 'assets/target_shield.png');
-      this.load.image('bow_and_hand', 'assets/bow_and_hand.png');
-      this.load.image('crosshair', 'assets/crosshair.png');
-      this.load.image('arrow_shaft', 'assets/arrow_shaft.png');
+      this.load.image('sky_bg', '/assets/sky_bg.png');
+      this.load.image('horizon', '/assets/horizon_silhouettes.png');
+      this.load.image('grass_floor', '/assets/grass_floor.png');
+      this.load.image('shadow', '/assets/shadow.png');
+      this.load.image('target_stand', '/assets/target_stand.png');
+      this.load.image('target_shield', '/assets/target_shield.png');
+      this.load.image('bow_and_hand', '/assets/bow_and_hand.png');
+      this.load.image('crosshair', '/assets/crosshair.png');
+      this.load.image('arrow_shaft', '/assets/arrow_shaft.png');
     }
 
     // ── Create ─────────────────────────────────────────────────────────────
