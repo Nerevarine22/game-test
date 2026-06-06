@@ -721,7 +721,13 @@ export default function FirstPersonArchery({ onGameFinished, gyroPermissionGrant
         },
         scene:  [SceneClass],
         input:  { activePointers: 2 },
-        render: { antialias: true },
+        render: {
+          antialias:      true,
+          antialiasGL:    true,
+          roundPixels:    false,
+          resolution:     window.devicePixelRatio || 1,  // Renders at native screen DPI
+          mipmapFilter:   'LINEAR_MIPMAP_LINEAR',         // Best quality downscaling
+        },
       };
 
       const game = new Phaser.Game(config);
